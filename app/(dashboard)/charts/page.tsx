@@ -17,9 +17,29 @@ const chartIcons: Record<string, React.ReactNode> = {
 };
 
 export default function ChartsPage() {
-    const { charts, deleteChart } = useChartStore();
+    const { charts, setCharts, deleteChart } = useChartStore();
+    const [isLoading, setIsLoading] = React.useState(true);
 
-    const formatDate = (date: Date) => {
+    React.useEffect(() => {
+        const fetchCharts = async () => {
+            try {
+                const response = await fetch('/api/charts');
+                const result = await response.json();
+                if (result.success) {
+                    setCharts(result.data);
+                }
+            } catch (error) {
+                console.error('Failed to fetch charts:', error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchCharts();
+    }, [setCharts]);
+
+    const formatDate = (date?: Date) => {
+        if (!date) return "N/A";
         return new Intl.DateTimeFormat("vi-VN", {
             day: "2-digit",
             month: "2-digit",
@@ -88,21 +108,21 @@ export default function ChartsPage() {
                                             <div className="text-xs text-[#64748B]">
                                                 <p>
                                                     <span className="font-medium">Table:</span>{" "}
-                                                    {chart.dataSource.table}
+                                                    {chart.dataSource?.table || 'N/A'}
                                                 </p>
                                                 <p>
                                                     <span className="font-medium">X-Axis:</span>{" "}
-                                                    {chart.dataSource.xAxis}
+                                                    {chart.dataSource?.xAxis || 'N/A'}
                                                 </p>
                                                 <p>
                                                     <span className="font-medium">Y-Axis:</span>{" "}
-                                                    {chart.dataSource.yAxis.join(", ")}
+                                                    {(chart.dataSource?.yAxis || []).join(", ")}
                                                 </p>
                                             </div>
 
                                             <div className="flex items-center justify-between pt-3 border-t border-[#E2E8F0]">
                                                 <span className="text-xs text-[#64748B]">
-                                                    Created {formatDate(chart.createdAt)}
+                                                    Created {formatDate(chart.createdAt ? new Date(chart.createdAt) : undefined)}
                                                 </span>
                                                 <div className="flex items-center gap-1">
                                                     <Link href={`/charts/new?edit=${chart.id}`}>
