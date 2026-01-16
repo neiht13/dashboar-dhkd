@@ -102,7 +102,7 @@ export function getAuthCookieOptions() {
     return {
         name: TOKEN_NAME,
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: process.env.NODE_ENV === 'production' && process.env.BETTER_AUTH_URL?.startsWith('https'),
         sameSite: 'lax' as const,
         maxAge: 60 * 60 * 24 * 7,
         path: '/',
