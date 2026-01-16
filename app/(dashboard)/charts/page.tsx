@@ -38,6 +38,7 @@ export default function ChartsPage() {
         fetchCharts();
     }, [setCharts]);
 
+
     const formatDate = (date?: Date) => {
         if (!date) return "N/A";
         return new Intl.DateTimeFormat("vi-VN", {
