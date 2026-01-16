@@ -484,7 +484,7 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
                             </YAxis>
                             {style?.showTooltip && <Tooltip content={<TooltipComponent />} cursor={{ fill: 'rgba(0, 102, 255, 0.05)' }} />}
                             {style?.showLegend && <Legend content={renderLegend()} verticalAlign={legendPosition as 'top' | 'bottom'} />}
-                            {dataSource.yAxis.map((field, index) => (
+                            {dataSource?.yAxis.map((field, index) => (
                                 <Bar
                                     key={field}
                                     dataKey={field}
@@ -530,7 +530,7 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
                             />
                             {style?.showTooltip && <Tooltip content={<TooltipComponent />} cursor={{ fill: 'rgba(0, 102, 255, 0.05)' }} />}
                             {style?.showLegend && <Legend content={renderLegend()} verticalAlign={legendPosition as 'top' | 'bottom'} />}
-                            {dataSource.yAxis.map((field, index) => (
+                            {dataSource?.yAxis.map((field, index) => (
                                 <Bar
                                     key={field}
                                     dataKey={field}
@@ -801,7 +801,7 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
                             <PolarRadiusAxis tick={{ fontSize: 10, fill: "#94A3B8" }} />
                             {style?.showTooltip && <Tooltip content={<TooltipComponent />} />}
                             {style?.showLegend && <Legend content={renderLegend()} verticalAlign={legendPosition as 'top' | 'bottom'} />}
-                            {dataSource.yAxis.map((field, index) => (
+                            {dataSource?.yAxis.map((field, index) => (
                                 <Radar
                                     key={field}
                                     name={field}
@@ -963,6 +963,8 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
                         </FunnelChart>
                     </ResponsiveContainer>
                 );
+
+
 
             default:
                 return (

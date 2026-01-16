@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
     Save,
@@ -128,7 +128,7 @@ const aggregateData = (data: any[], groupByField: string, valueFields: string[],
 
 
 
-export default function ChartDesignerPage() {
+function ChartBuilderContent() {
     const router = useRouter();
     // const { toast } = useToast(); // Removed
     const searchParams = useSearchParams();
@@ -917,7 +917,7 @@ GROUP BY THANG, NAM, Ma_DV`}
                                                             <label className="text-xs text-[#64748B] mb-1 block">Cột X (trục ngang)</label>
                                                             <Select
                                                                 value={customSqlXAxis}
-                                                                onValueChange={(value) => setCustomSqlXAxis(value)}
+                                                                onValueChange={(value) => setCustomSqlXAxis(value || "")}
                                                             >
                                                                 <SelectTrigger>
                                                                     <SelectValue>{customSqlXAxis || "Chọn cột X"}</SelectValue>
@@ -1803,3 +1803,15 @@ GROUP BY THANG, NAM, Ma_DV`}
     );
 }
 
+
+export default function ChartDesignerPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex h-screen items-center justify-center bg-[#F8FAFC]">
+                <Loader2 className="h-8 w-8 text-[#0052CC] animate-spin" />
+            </div>
+        }>
+            <ChartBuilderContent />
+        </Suspense>
+    );
+}

@@ -185,7 +185,8 @@ export function DashboardGrid() {
         if (!currentDashboard) return;
 
         const fetchChartData = async (widgetId: string, config: ChartConfigType) => {
-            if (!config.dataSource?.table || !config.dataSource?.xAxis || !config.dataSource?.yAxis?.length) {
+            const isCard = config.type === 'card';
+            if (!config.dataSource?.table || (!isCard && !config.dataSource?.xAxis) || !config.dataSource?.yAxis?.length) {
                 return;
             }
 
