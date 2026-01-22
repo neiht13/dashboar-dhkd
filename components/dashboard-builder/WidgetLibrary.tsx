@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import { useDraggable } from "@dnd-kit/core";
-import { BarChart3, Type, LineChart, PieChart, AreaChart, Search, Image, Code } from "lucide-react";
+import { BarChart3, Type, LineChart, PieChart, AreaChart, Search, Image, Code, Activity, Map } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useDashboardStore } from "@/stores/dashboard-store";
@@ -52,6 +52,24 @@ const widgetTypes = [
         icon: <Code className="h-5 w-5" />,
         description: "Nhúng trang web hoặc nội dung HTML",
     },
+    {
+        type: "header-advanced", // Separator
+        label: "Nâng cao",
+        icon: null,
+        description: null
+    },
+    {
+        type: "metric", // Maps to hexagon
+        label: "Chỉ số (Hexagon)",
+        icon: <Activity className="h-5 w-5" />,
+        description: "Widget hình lục giác, hiển thị chỉ số & xu hướng",
+    },
+    {
+        type: "map",
+        label: "Bản đồ TTVT",
+        icon: <Map className="h-5 w-5" />,
+        description: "Bản đồ phân bố vùng & thuê bao",
+    },
 ];
 
 // Get icon for chart type
@@ -61,7 +79,7 @@ function getChartIcon(type: string) {
             return <LineChart className="h-5 w-5" />;
         case "pie":
         case "donut":
-        case "sizedPie":
+        case "sizedPie": // Legacy - now use pie with pieVariant: 'sized'
             return <PieChart className="h-5 w-5" />;
         case "area":
             return <AreaChart className="h-5 w-5" />;
@@ -131,6 +149,35 @@ export function WidgetLibrary() {
                     w = 6;
                     h = 5;
                 }
+                break;
+            case "metric":
+                config = {
+                    title: "Thuê bao PTM",
+                    type: "hexagon", // DynamicChart type
+                    dataSource: {
+                        yAxis: ['value'], // Default field
+                        xAxis: 'name'
+                    },
+                    style: {
+                        cardIcon: "Activity",
+                        colors: ["#3b82f6"]
+                    }
+                };
+                w = 3;
+                h = 3;
+                break;
+            case "map":
+                config = {
+                    title: "Bản đồ phân bố",
+                    type: "map",
+                    dataSource: {
+                        table: "TTVT_Data", // Mock
+                        xAxis: "ma_ttvt",
+                        yAxis: ["value"]
+                    }
+                };
+                w = 8;
+                h = 6;
                 break;
         }
 

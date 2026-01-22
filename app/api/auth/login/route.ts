@@ -1,11 +1,26 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
 import { createToken, createAuthResponse } from '@/lib/auth';
+import { checkRateLimit, getClientIP, createRateLimitHeaders, RATE_LIMITS } from '@/lib/rate-limit';
 import bcrypt from 'bcryptjs';
 
 // POST /api/auth/login - Login user (Native Driver Version)
 export async function POST(request: Request) {
     try {
+        // Rate limiting check
+        const clientIP = getClientIP(request);
+        const rateLimitResult = checkRateLimit(`login:${clientIP}`, RATE_LIMITS.auth);
+        
+        if (!rateLimitResult.success) {
+            return NextResponse.json(
+                { success: false, error: rateLimitResult.message },
+                { 
+                    status: 429,
+                    headers: createRateLimitHeaders(rateLimitResult)
+                }
+            );
+        }
+
         const body = await request.json();
         const { email, password } = body;
 

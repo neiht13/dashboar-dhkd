@@ -6,6 +6,7 @@ import {
     Save,
     ArrowLeft,
     BarChart3,
+    BarChart2,
     LineChart,
     PieChart,
     Activity,
@@ -25,12 +26,19 @@ import {
     Code,
     Baseline,
     CreditCard,
+    Upload,
+    FileSpreadsheet,
+    X,
+    Table2,
 } from "lucide-react";
+import * as XLSX from 'xlsx';
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ColorPicker } from "@/components/ui/color-picker";
+import { IconPicker } from "@/components/ui/IconPicker";
+import { MetricsEditor } from "@/components/ui/MetricsEditor";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
     Select,
@@ -41,8 +49,9 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { DynamicChart } from "@/components/charts/DynamicChart";
+import { InteractiveChart } from "@/components/charts/InteractiveChart";
 import { useChartStore } from "@/stores/chart-store";
-import type { ChartType, ChartConfig, AggregationType } from "@/types";
+import type { ChartType, ChartConfig, AggregationType, StatCardMetric } from "@/types";
 import { generateId, defaultChartColors } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { Basic } from "next/font/google";
@@ -67,13 +76,12 @@ const chartTypes: { type: ChartType; label: string; icon: React.ReactNode }[] = 
     { type: "line", label: "Đường", icon: <LineChart className="h-5 w-5" /> },
     { type: "area", label: "Vùng", icon: <Activity className="h-5 w-5" /> },
     { type: "pie", label: "Tròn", icon: <PieChart className="h-5 w-5" /> },
-    { type: "donut", label: "Donut", icon: <CircleDot className="h-5 w-5" /> },
-    { type: "sizedPie", label: "Tròn (Size)", icon: <PieChart className="h-5 w-5 scale-75" /> },
+
     { type: "radar", label: "Radar", icon: <Radar className="h-5 w-5" /> },
     { type: "composed", label: "Kết hợp", icon: <GitMerge className="h-5 w-5" /> },
     { type: "funnel", label: "Phễu", icon: <Filter className="h-5 w-5" /> },
     { type: "map", label: "Bản đồ", icon: <Map className="h-5 w-5" /> },
-    { type: "card", label: "Thẻ số", icon: <CreditCard className="h-5 w-5" /> },
+    { type: "card", label: "Thẻ thống kê", icon: <BarChart2 className="h-5 w-5" /> },
 ];
 
 
@@ -126,6 +134,107 @@ const aggregateData = (data: any[], groupByField: string, valueFields: string[],
     });
 };
 
+// Extended function with groupBy array, orderBy, limit support
+const processChartData = (
+    data: any[],
+    xAxis: string,
+    yAxis: string[],
+    aggregation: string,
+    additionalGroupBy: string[] = [],
+    orderByField?: string,
+    orderDir: 'asc' | 'desc' = 'asc',
+    limitNum: number = 0,
+    drillDownLabelField?: string
+) => {
+    if (!xAxis || yAxis.length === 0 || !data.length) return data;
+
+    // Build group fields: xAxis + additionalGroupBy
+    const groupFields = [xAxis, ...additionalGroupBy];
+
+    // Aggregate
+    const groups: Record<string, any> = {};
+    data.forEach(item => {
+        const key = groupFields.map(f => String(item[f] || '')).join('|||');
+        if (!groups[key]) {
+            groups[key] = { _count: 0 };
+            groupFields.forEach(f => { groups[key][f] = item[f]; });
+            yAxis.forEach(field => {
+                groups[key][field] = aggregation === 'min' ? Infinity : (aggregation === 'max' ? -Infinity : 0);
+            });
+            // Create composite label if groupBy exists
+            if (additionalGroupBy.length > 0) {
+                const labelParts = [String(item[xAxis] || ''), ...additionalGroupBy.map(g => String(item[g] || ''))];
+                groups[key]._compositeLabel = labelParts.join(' - ');
+            }
+        }
+        groups[key]._count++;
+
+        yAxis.forEach(field => {
+            const val = Number(item[field]) || 0;
+            if (aggregation === 'sum' || aggregation === 'avg') {
+                groups[key][field] += val;
+            } else if (aggregation === 'min') {
+                groups[key][field] = Math.min(groups[key][field], val);
+            } else if (aggregation === 'max') {
+                groups[key][field] = Math.max(groups[key][field], val);
+            }
+        });
+
+        // Aggregate drillDownLabelField (MAX) if present
+        if (drillDownLabelField && item[drillDownLabelField]) {
+            const currentLabel = String(groups[key][drillDownLabelField] || '');
+            const newLabel = String(item[drillDownLabelField]);
+            // Use lexicographical comparison to pick "MAX" label
+            if (newLabel.localeCompare(currentLabel) > 0) {
+                groups[key][drillDownLabelField] = newLabel;
+            }
+        }
+    });
+
+    let result = Object.values(groups).map((group: any) => {
+        const row = { ...group };
+        yAxis.forEach(field => {
+            if (aggregation === 'avg') {
+                row[field] = row[field] / group._count;
+            } else if (aggregation === 'count') {
+                row[field] = group._count;
+            }
+        });
+        delete row._count;
+
+        // Store original value for drill-down
+        row._drillValue = row[xAxis];
+
+        // If composite label exists, override xAxis value
+        if (row._compositeLabel) {
+            row[xAxis] = row._compositeLabel;
+            delete row._compositeLabel;
+        }
+        return row;
+    });
+
+    // Sort
+    if (orderByField) {
+        result = result.sort((a, b) => {
+            const aVal = a[orderByField];
+            const bVal = b[orderByField];
+            if (typeof aVal === 'number' && typeof bVal === 'number') {
+                return orderDir === 'asc' ? aVal - bVal : bVal - aVal;
+            }
+            return orderDir === 'asc'
+                ? String(aVal || '').localeCompare(String(bVal || ''))
+                : String(bVal || '').localeCompare(String(aVal || ''));
+        });
+    }
+
+    // Limit
+    if (limitNum > 0) {
+        result = result.slice(0, limitNum);
+    }
+
+    return result;
+};
+
 
 
 function ChartBuilderContent() {
@@ -174,12 +283,23 @@ function ChartBuilderContent() {
                         setOrderDirection(existingChart.dataSource.orderDirection || 'asc');
                         setLimit(existingChart.dataSource.limit || 0);
 
-                        // Restore Custom SQL Mode
+                        // Restore Query Mode (simple, custom, or import)
                         if (existingChart.dataSource.queryMode === 'custom') {
                             setQueryMode('custom');
                             setCustomSql(existingChart.dataSource.customQuery || '');
                             setCustomSqlXAxis(existingChart.dataSource.xAxis || '');
                             setCustomSqlYAxis(existingChart.dataSource.yAxis || []);
+                        } else if (existingChart.dataSource.queryMode === 'import') {
+                            setQueryMode('import');
+                            setImportedData(existingChart.dataSource.importedData || []);
+                            setImportedFileName(existingChart.dataSource.importedFileName || '');
+                            setImportXAxis(existingChart.dataSource.xAxis || '');
+                            setImportYAxis(existingChart.dataSource.yAxis || []);
+                            // Set columns from imported data
+                            if (existingChart.dataSource.importedData && existingChart.dataSource.importedData.length > 0) {
+                                setImportedColumns(Object.keys(existingChart.dataSource.importedData[0]));
+                                setChartData(existingChart.dataSource.importedData);
+                            }
                         } else {
                             setQueryMode('simple');
                         }
@@ -188,6 +308,9 @@ function ChartBuilderContent() {
                         setSelectedDateColumn(existingChart.dataSource.dateColumn || '');
                         setStartDateColumn(existingChart.dataSource.startDateColumn || existingChart.dataSource.dateColumn || '');
                         setEndDateColumn(existingChart.dataSource.endDateColumn || existingChart.dataSource.dateColumn || '');
+
+                        // Handle Drill-down Label Field
+                        setDrillDownLabelField(existingChart.dataSource.drillDownLabelField || '');
 
                         // Restore filters
                         if (existingChart.dataSource.filters) {
@@ -215,6 +338,15 @@ function ChartBuilderContent() {
                         setXAxisExclude(existingChart.style.xAxisExclude || []);
                         setTitleFontSize(existingChart.style.titleFontSize || 14);
 
+                        // Pie variant (also handle legacy donut type conversion)
+                        if (existingChart.style.pieVariant) {
+                            setPieVariant(existingChart.style.pieVariant);
+                        } else if (existingChart.type === 'donut') {
+                            setPieVariant('donut');
+                        } else if (existingChart.type === 'sizedPie') {
+                            setPieVariant('sized');
+                        }
+
                         // Y-axis field customizations
                         if (existingChart.style.yAxisFieldLabels) {
                             setYAxisFieldLabels(existingChart.style.yAxisFieldLabels);
@@ -231,6 +363,7 @@ function ChartBuilderContent() {
                         if (existingChart.style.cardColor) setCardColor(existingChart.style.cardColor);
                         if (existingChart.style.cardIcon) setCardIcon(existingChart.style.cardIcon);
                         if (existingChart.style.showCardIcon !== undefined) setShowCardIcon(existingChart.style.showCardIcon);
+                        if (existingChart.dataSource?.metrics) setStatCardMetrics(existingChart.dataSource.metrics as StatCardMetric[]);
                         if (existingChart.style.cardBackgroundColor) setCardBackgroundColor(existingChart.style.cardBackgroundColor);
                     }
                 }
@@ -246,7 +379,7 @@ function ChartBuilderContent() {
         updateDataSource({ dateColumn: val });
     };
 
-    const handleSaveChart = () => {
+    const handleSaveChart = async () => {
         // DEBUG: Log values used for filter construction
         console.log('[handleSaveChart] startDateColumn:', startDateColumn);
         console.log('[handleSaveChart] endDateColumn:', endDateColumn);
@@ -254,25 +387,50 @@ function ChartBuilderContent() {
         console.log('[handleSaveChart] filterFromDate:', filterFromDate);
         console.log('[handleSaveChart] filterToDate:', filterToDate);
 
+        // Determine values based on queryMode
+        const getXAxis = () => {
+            if (queryMode === 'custom') return customSqlXAxis;
+            if (queryMode === 'import') return importXAxis;
+            return selectedXAxis;
+        };
+        const getYAxis = () => {
+            if (queryMode === 'custom') return customSqlYAxis;
+            if (queryMode === 'import') return importYAxis;
+            return selectedYAxis;
+        };
+        const getTable = () => {
+            if (queryMode === 'custom') return selectedTable || 'custom_query';
+            if (queryMode === 'import') return 'imported_data';
+            return selectedTable;
+        };
+
         const chartConfig: ChartConfig = {
-            id: editChartId || generateId(), // ID is reused if editing
+            id: editChartId || generateId(), // ID will be overwritten by DB if new
             name: chartName || "Biểu đồ chưa đặt tên",
             type: currentChart.type || "bar",
             dataSource: {
                 queryMode,
                 customQuery: queryMode === 'custom' ? customSql : undefined,
-                table: queryMode === 'custom' ? (selectedTable || 'custom_query') : selectedTable,
-                xAxis: queryMode === 'custom' ? customSqlXAxis : selectedXAxis,
-                yAxis: queryMode === 'custom' ? customSqlYAxis : selectedYAxis,
-                aggregation,
+                table: getTable(),
+                xAxis: getXAxis(),
+                yAxis: getYAxis(),
+                aggregation: queryMode === 'import' ? 'sum' : aggregation, // Default for import
                 groupBy: groupBy.length > 0 ? groupBy : undefined,
                 orderBy: orderBy || undefined,
                 orderDirection: orderBy ? orderDirection : undefined,
                 limit: limit > 0 ? limit : undefined,
+                connectionId: selectedConnectionId || undefined,
                 // Removed duplicate properties
                 dateColumn: startDateColumn || selectedDateColumn, // Fallback to legacy
                 startDateColumn,
                 endDateColumn,
+                // Drill-down settings
+                drillDownLabelField: drillDownLabelField || undefined,
+                // Import-specific data
+                importedData: queryMode === 'import' ? importedData : undefined,
+                importedFileName: queryMode === 'import' ? importedFileName : undefined,
+                // StatCard metrics
+                metrics: currentChart.type === 'statCard' ? statCardMetrics : undefined,
                 filters: [
                     ...((startDateColumn || selectedDateColumn) && filterFromDate ? [{
                         field: startDateColumn || selectedDateColumn,
@@ -314,17 +472,45 @@ function ChartBuilderContent() {
                 cardIcon: currentChart.type === 'card' ? cardIcon : undefined,
                 showCardIcon: currentChart.type === 'card' ? showCardIcon : undefined,
                 cardBackgroundColor: currentChart.type === 'card' ? cardBackgroundColor : undefined,
+                // Map specific
+                mapDisplayMode: currentChart.type === 'map' ? mapDisplayMode : undefined,
+                mapColorScheme: currentChart.type === 'map' ? mapColorScheme : undefined,
             },
             createdAt: new Date(),
             updatedAt: new Date(),
         };
 
-        // saveChart handles both add and update logic based on ID existence
-        saveChart(chartConfig);
+        try {
+            // Optimistically update local store? No, better wait for server.
+            // But for now, we follow existing pattern but ADD network call.
 
-        toast.success(editChartId ? "Đã cập nhật biểu đồ" : "Đã lưu biểu đồ mới");
+            const method = editChartId ? 'PUT' : 'POST';
+            const url = editChartId ? `/api/charts/${editChartId}` : '/api/charts';
 
-        router.push("/charts");
+            const response = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(chartConfig),
+            });
+
+            const result = await response.json();
+
+            if (result.success && result.data) {
+                // Use the returned data (which includes the real DB ID)
+                saveChart(result.data);
+                toast.success(editChartId ? "Đã cập nhật biểu đồ" : "Đã lưu biểu đồ mới");
+                router.push("/charts");
+            } else {
+                toast.error(result.error || "Lỗi khi lưu biểu đồ");
+            }
+
+        } catch (error) {
+            console.error("Save error:", error);
+            toast.error("Lỗi kết nối server");
+            // Fallback to local save if server fails? Maybe not in production.
+            // But to prevent data loss for user:
+            saveChart(chartConfig);
+        }
     };
 
     const [chartName, setChartName] = useState("");
@@ -362,6 +548,7 @@ function ChartBuilderContent() {
     const [selectedDateColumn, setSelectedDateColumn] = useState<string>(""); // Legacy/Global
     const [startDateColumn, setStartDateColumn] = useState<string>("");
     const [endDateColumn, setEndDateColumn] = useState<string>("");
+    const [drillDownLabelField, setDrillDownLabelField] = useState<string>(""); // Field for drill-down labels
 
     // Filter values
     const [filterFromDate, setFilterFromDate] = useState<string>("");
@@ -372,12 +559,20 @@ function ChartBuilderContent() {
     const [isLoadingChartData, setIsLoadingChartData] = useState(false);
     const [chartDataError, setChartDataError] = useState<string | null>(null);
 
-    // Custom SQL Mode
-    const [queryMode, setQueryMode] = useState<"simple" | "custom">("simple");
+    // Query Mode (simple, custom SQL, or import)
+    const [queryMode, setQueryMode] = useState<"simple" | "custom" | "import">("simple");
     const [customSql, setCustomSql] = useState<string>("");
     const [customSqlXAxis, setCustomSqlXAxis] = useState<string>("");
     const [customSqlYAxis, setCustomSqlYAxis] = useState<string[]>([]);
     const [customSqlColumns, setCustomSqlColumns] = useState<string[]>([]);
+
+    // Import Mode
+    const [importedData, setImportedData] = useState<Record<string, unknown>[]>([]);
+    const [importedFileName, setImportedFileName] = useState<string>("");
+    const [importedColumns, setImportedColumns] = useState<string[]>([]);
+    const [importXAxis, setImportXAxis] = useState<string>("");
+    const [importYAxis, setImportYAxis] = useState<string[]>([]);
+    const [isParsingFile, setIsParsingFile] = useState(false);
 
     // Style options
     const [showLegend, setShowLegend] = useState(true);
@@ -396,12 +591,16 @@ function ChartBuilderContent() {
     const [yAxisFieldLabels, setYAxisFieldLabels] = useState<Record<string, string>>({}); // Custom labels for Y-axis fields
     const [yAxisFieldColors, setYAxisFieldColors] = useState<Record<string, string>>({}); // Custom colors for Y-axis fields
     const [titleFontSize, setTitleFontSize] = useState(14);
+    const [pieVariant, setPieVariant] = useState<"default" | "sized" | "donut">("default");
 
     // Card styling state
     const [cardFontSize, setCardFontSize] = useState<"sm" | "md" | "lg" | "xl">("lg");
     const [cardColor, setCardColor] = useState<string>(""); // Empty for gradient default
     const [cardIcon, setCardIcon] = useState<string>("");
     const [showCardIcon, setShowCardIcon] = useState(true);
+    const [statCardMetrics, setStatCardMetrics] = useState<StatCardMetric[]>([]);
+    const [mapDisplayMode, setMapDisplayMode] = useState<string>("choropleth");
+    const [mapColorScheme, setMapColorScheme] = useState<string>("default");
     const [cardBackgroundColor, setCardBackgroundColor] = useState<string>("");
 
     const [activeTab, setActiveTab] = useState<"data" | "style">("data");
@@ -421,7 +620,6 @@ function ChartBuilderContent() {
     }, []);
 
     // Fetch chart data when configuration changes
-    // Fetch chart data when configuration changes
     useEffect(() => {
         if (queryMode === 'simple') {
             const isCard = currentChart.type === 'card';
@@ -429,8 +627,14 @@ function ChartBuilderContent() {
             if (selectedTable && (isCard || selectedXAxis) && selectedYAxis.length > 0) {
                 fetchChartData();
             }
+        } else if (queryMode === 'import') {
+            // For import mode, process imported data directly
+            if (importedData.length > 0 && importXAxis && importYAxis.length > 0) {
+                // Use imported data directly - it's already in the right format
+                setChartData(importedData);
+            }
         }
-    }, [queryMode, selectedTable, selectedXAxis, selectedYAxis, aggregation, orderBy, orderDirection, filterFromDate, filterToDate, startDateColumn, endDateColumn, currentChart.type]);
+    }, [queryMode, selectedTable, selectedXAxis, selectedYAxis, aggregation, groupBy, orderBy, orderDirection, filterFromDate, filterToDate, startDateColumn, endDateColumn, currentChart.type, importedData, importXAxis, importYAxis]);
 
     // Fetch tables when connection changes (initial load or manual change)
     useEffect(() => {
@@ -540,6 +744,7 @@ function ChartBuilderContent() {
                     xAxis: isCard ? undefined : selectedXAxis,
                     yAxis: selectedYAxis,
                     aggregation: aggregation,
+                    groupBy: groupBy.length > 0 ? groupBy : undefined, // Send groupBy to API
                     orderBy,
                     orderDirection,
                     limit: limit > 0 ? limit : undefined,
@@ -563,8 +768,21 @@ function ChartBuilderContent() {
 
             const result = await response.json();
             if (result.success && result.data) {
-                setChartData(result.data);
-                console.log('Chart data loaded:', result.data.length, 'rows');
+                let chartDataResult = result.data;
+
+                // Create composite x-axis labels if groupBy exists (same as dashboard)
+                if (selectedXAxis && groupBy.length > 0) {
+                    chartDataResult = chartDataResult.map((row: Record<string, unknown>) => {
+                        const labelParts = [String(row[selectedXAxis] || ''), ...groupBy.map(g => String(row[g] || ''))];
+                        return {
+                            ...row,
+                            [selectedXAxis]: labelParts.join(' - '),
+                        };
+                    });
+                }
+
+                setChartData(chartDataResult);
+                console.log('Chart data loaded:', chartDataResult.length, 'rows');
             } else {
                 setChartDataError(result.error || 'Không thể tải dữ liệu biểu đồ');
                 setChartData([]);
@@ -619,17 +837,259 @@ function ChartBuilderContent() {
         )
     );
 
-    // --- Aggregation Logic for Custom SQL ---
+    // --- Aggregation Logic for Custom SQL and Import ---
     const aggregatedChartData = React.useMemo(() => {
-        // Only apply if in Custom SQL mode (implied by customSql columns usage) 
-        // AND we have X axis and Y axis selected.
-        if (queryMode === 'custom' && customSqlXAxis && customSqlYAxis.length > 0 && aggregation) {
-            return aggregateData(chartData, customSqlXAxis, customSqlYAxis, aggregation);
+        // Custom SQL mode - apply client-side aggregation using processChartData (same as Import mode)
+        if (queryMode === 'custom' && customSqlXAxis && customSqlYAxis.length > 0 && chartData.length > 0) {
+            return processChartData(
+                chartData,
+                customSqlXAxis,
+                customSqlYAxis,
+                aggregation,
+                groupBy,
+                orderBy || undefined,
+                orderDirection,
+                limit,
+                drillDownLabelField
+            );
+        }
+        // Import mode - process with groupBy, orderBy, limit (aggregate locally)
+        if (queryMode === 'import' && importXAxis && importYAxis.length > 0 && importedData.length > 0) {
+            return processChartData(
+                importedData,
+                importXAxis,
+                importYAxis,
+                aggregation,
+                groupBy,
+                orderBy || undefined,
+                orderDirection,
+                limit,
+                drillDownLabelField
+            );
         }
         return chartData;
-    }, [chartData, queryMode, customSqlXAxis, customSqlYAxis, aggregation]);
+    }, [chartData, queryMode, customSqlXAxis, customSqlYAxis, aggregation, importXAxis, importYAxis, importedData, groupBy, orderBy, orderDirection, limit, drillDownLabelField]);
 
-    // Build preview config
+    // --- Drill Down Handler for Preview ---
+    const handlePreviewDrillDown = async (drillFilters: Array<{ field: string; operator: string; value: string | number }>) => {
+        console.log("Preview Drill Down:", drillFilters);
+
+        // 1. Import Mode
+        if (queryMode === 'import' && importedData.length > 0) {
+            const xAxis = importXAxis;
+            // Aggregate filtered data by labelField
+            const groups: Record<string, any> = {};
+            const labelField = drillDownLabelField || xAxis;
+            const agg = aggregation || 'sum'; // Use current aggregation setting
+
+            // Filter data first
+            let filteredData = [...importedData];
+            drillFilters.forEach(f => {
+                filteredData = filteredData.filter(row => {
+                    const rowValue = row[f.field];
+                    return String(rowValue) === String(f.value);
+                });
+            });
+
+            filteredData.forEach(row => {
+                const key = String(row[labelField] || row[xAxis] || 'Unknown');
+                if (!groups[key]) {
+                    groups[key] = { _count: 0 };
+                    if (labelField) groups[key][labelField] = key;
+                    if (xAxis) groups[key][xAxis] = key;
+                    importYAxis.forEach(y => {
+                        groups[key][y] = agg === 'min' ? Infinity : (agg === 'max' ? -Infinity : 0);
+                    });
+                }
+                groups[key]._count++;
+
+                importYAxis.forEach(y => {
+                    const val = Number(row[y]) || 0;
+                    if (agg === 'sum' || agg === 'avg') {
+                        groups[key][y] += val;
+                    } else if (agg === 'min') {
+                        groups[key][y] = Math.min(groups[key][y], val);
+                    } else if (agg === 'max') {
+                        groups[key][y] = Math.max(groups[key][y], val);
+                    }
+                });
+            });
+
+            return Object.values(groups).map((g: any, index) => {
+                const row: any = { ...g };
+                if (agg === 'avg') {
+                    importYAxis.forEach(y => {
+                        row[y] = row[y] / g._count;
+                    });
+                } else if (agg === 'count') {
+                    importYAxis.forEach(y => {
+                        row[y] = g._count;
+                    });
+                }
+                delete row._count;
+                return {
+                    ...row,
+                    _row_id: index + 1,
+                    _label: row[labelField] || row[xAxis] || `#${index + 1}`,
+                    name: row[labelField] || row[xAxis] || `#${index + 1}`,
+                };
+            });
+        }
+
+        // 2. Custom SQL Mode
+        if (queryMode === 'custom' && customSql) {
+            try {
+                const xAxis = customSqlXAxis;
+                const yAxis = customSqlYAxis;
+                const groupByArr = groupBy;
+
+                // Modify custom query to add WHERE conditions
+                let query = customSql;
+                const whereConditions: string[] = [];
+
+                drillFilters.forEach(f => {
+                    const value = typeof f.value === 'string' ? `N'${f.value}'` : f.value;
+                    whereConditions.push(`[${f.field}] = ${value}`);
+                });
+
+                if (whereConditions.length > 0) {
+                    query = `SELECT * FROM (${query}) AS _drill_sub WHERE ${whereConditions.join(' AND ')}`;
+                }
+
+                const response = await fetch("/api/database/chart-data", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        customQuery: query.trim(),
+                        connectionId: selectedConnectionId || undefined,
+                    }),
+                });
+
+                const result = await response.json();
+                if (result.success && result.data) {
+                    // Client-side aggregation for preview (same as aggregatedChartData logic)
+                    if (xAxis && yAxis.length > 0) {
+                        // Use drillDownLabelField for grouping if available (Dimension Switching)
+                        const drillLabelField = drillDownLabelField || xAxis;
+
+                        return processChartData(
+                            result.data,
+                            drillLabelField, // Force grouping by label field
+                            yAxis,
+                            aggregation,
+                            groupByArr,
+                            undefined, // orderBy
+                            'asc',
+                            0 // limit
+                        ).map((row: any, index: number) => ({
+                            ...row,
+                            name: row[drillLabelField] || `#${index + 1}`
+                        }));
+                    }
+                    return result.data;
+                }
+            } catch (error) {
+                console.error("Preview drill error:", error);
+            }
+            return [];
+        }
+
+        // 3. Simple Mode
+        if (queryMode === 'simple' && selectedTable) {
+            try {
+                const table = selectedTable;
+                const xAxis = selectedXAxis;
+                const yAxis = selectedYAxis;
+                const groupByArr = groupBy;
+
+                // Dimension Switching: Use drillDownLabelField if configured
+                const effectiveXAxis = drillDownLabelField || xAxis;
+
+                // Build WHERE
+                const whereConditions: string[] = [];
+                drillFilters.forEach(f => {
+                    const field = f.field.replace(/[^\w]/g, '');
+                    const value = typeof f.value === 'string' ? `N'${f.value}'` : f.value;
+                    whereConditions.push(`[${field}] = ${value}`);
+                });
+
+                const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+
+                // Build Aggregated Query
+                const yAxisSelect = yAxis.map(f => {
+                    const field = `[${f.replace(/[^\w]/g, '')}]`;
+                    switch (aggregation) {
+                        case 'avg': return `AVG(${field}) as [${f}]`;
+                        case 'min': return `MIN(${field}) as [${f}]`;
+                        case 'max': return `MAX(${field}) as [${f}]`;
+                        case 'count': return `COUNT(${field}) as [${f}]`;
+                        case 'sum':
+                        default: return `SUM(${field}) as [${f}]`;
+                    }
+                }).join(', ');
+
+                // Group by effectiveXAxis (Label) and additional groups
+                const groupCols = [effectiveXAxis, ...groupByArr].filter(Boolean).map(f => `[${f.replace(/[^\w]/g, '')}]`);
+
+                const drillQuery = `
+                    SELECT 
+                        ${groupCols.join(', ')},
+                        ${yAxisSelect}
+                    FROM [dbo].[${table}]
+                    ${whereClause}
+                    GROUP BY ${groupCols.join(', ')}
+                `;
+
+                const response = await fetch("/api/database/chart-data", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        customQuery: drillQuery.trim(),
+                        connectionId: selectedConnectionId || undefined,
+                    }),
+                });
+
+                const result = await response.json();
+                if (result.success && result.data) {
+                    return result.data.map((row: any, index: number) => {
+                        // Composite label logic
+                        if (groupByArr.length > 0 && effectiveXAxis) {
+                            const labelParts = [String(row[effectiveXAxis] || ''), ...groupByArr.map(g => String(row[g] || ''))];
+                            const compositeLabel = labelParts.join(' - ');
+                            return {
+                                ...row,
+                                [effectiveXAxis]: compositeLabel,
+                                name: compositeLabel
+                            };
+                        }
+                        return {
+                            ...row,
+                            name: row[effectiveXAxis] || `#${index + 1}`
+                        };
+                    });
+                }
+
+            } catch (error) {
+                console.error("Preview drill simple error:", error);
+            }
+            return [];
+        }
+
+        return [];
+    };
+
+    // Build preview config - handle all query modes
+    const getPreviewXAxis = () => {
+        if (queryMode === 'custom') return customSqlXAxis;
+        if (queryMode === 'import') return importXAxis;
+        return selectedXAxis || "thang";
+    };
+    const getPreviewYAxis = () => {
+        if (queryMode === 'custom') return customSqlYAxis;
+        if (queryMode === 'import') return importYAxis;
+        return selectedYAxis.length > 0 ? selectedYAxis : ["ptm"];
+    };
+
     const previewConfig: ChartConfig = {
         id: "preview",
         name: chartName || "Xem trước",
@@ -637,10 +1097,20 @@ function ChartBuilderContent() {
         dataSource: {
             queryMode,
             customQuery: queryMode === 'custom' ? customSql : undefined,
-            table: selectedTable || '',
-            xAxis: queryMode === 'custom' ? customSqlXAxis : (selectedXAxis || "thang"),
-            yAxis: queryMode === 'custom' ? customSqlYAxis : (selectedYAxis.length > 0 ? selectedYAxis : ["ptm"]),
-            aggregation,
+            connectionId: selectedConnectionId || undefined,
+            table: queryMode === 'import' ? 'imported_data' : (selectedTable || ''),
+            xAxis: getPreviewXAxis(),
+            yAxis: getPreviewYAxis(),
+            aggregation: queryMode === 'import' ? 'sum' : aggregation,
+            groupBy: groupBy.length > 0 ? groupBy : undefined,
+            orderBy: orderBy || undefined,
+            orderDirection: orderBy ? orderDirection : undefined,
+            limit: limit > 0 ? limit : undefined,
+            drillDownLabelField: drillDownLabelField || undefined,
+            startDateColumn: startDateColumn || undefined,
+            endDateColumn: endDateColumn || undefined,
+            importedData: queryMode === 'import' ? importedData : undefined,
+            importedFileName: queryMode === 'import' ? importedFileName : undefined,
         },
         style: {
             colors: defaultChartColors,
@@ -663,6 +1133,7 @@ function ChartBuilderContent() {
             title: chartName || undefined,
             titleFontSize,
             animation: true,
+            pieVariant: currentChart.type === 'pie' && pieVariant !== 'default' ? pieVariant : undefined,
             cardFontSize,
             cardColor,
             cardIcon,
@@ -786,55 +1257,336 @@ function ChartBuilderContent() {
                                         <button
                                             onClick={() => setQueryMode("simple")}
                                             className={cn(
-                                                "flex-1 py-2 px-3 text-xs font-medium rounded-md border transition-all",
+                                                "flex-1 py-2 px-3 text-xs font-medium rounded-md border transition-all flex items-center justify-center",
                                                 queryMode === "simple"
                                                     ? "bg-[#0052CC] text-white border-[#0052CC]"
                                                     : "bg-white text-[#64748B] border-[#E2E8F0] hover:border-[#0052CC]"
                                             )}
                                         >
-                                            <Baseline className="mr-2" /> Chế độ đơn giản
+                                            <Database className="h-3 w-3 mr-1" /> Đơn giản
                                         </button>
                                         <button
                                             onClick={() => setQueryMode("custom")}
                                             className={cn(
-                                                "flex-1 py-2 px-3 text-xs font-medium rounded-md border transition-all",
+                                                "flex-1 py-2 px-3 text-xs font-medium rounded-md border transition-all flex items-center justify-center",
                                                 queryMode === "custom"
                                                     ? "bg-[#0052CC] text-white border-[#0052CC]"
                                                     : "bg-white text-[#64748B] border-[#E2E8F0] hover:border-[#0052CC]"
                                             )}
                                         >
-                                            <Code className="mr-2" /> SQL tùy chỉnh
+                                            <Code className="h-3 w-3 mr-1" /> SQL
+                                        </button>
+                                        <button
+                                            onClick={() => setQueryMode("import")}
+                                            className={cn(
+                                                "flex-1 py-2 px-3 text-xs font-medium rounded-md border transition-all flex items-center justify-center",
+                                                queryMode === "import"
+                                                    ? "bg-[#0052CC] text-white border-[#0052CC]"
+                                                    : "bg-white text-[#64748B] border-[#E2E8F0] hover:border-[#0052CC]"
+                                            )}
+                                        >
+                                            <Upload className="h-3 w-3 mr-1" /> Import
                                         </button>
                                     </div>
 
                                     <div className="space-y-4">
-                                        {/* Database Connection Selector - shown in both modes */}
-                                        <div>
-                                            <label className="text-xs text-[#64748B] mb-1 block">Chọn Database</label>
-                                            <Select
-                                                value={selectedConnectionId}
-                                                onValueChange={handleConnectionChange}
-                                                disabled={isLoadingConnections || connections.length === 0}
-                                            >
-                                                <SelectTrigger className="w-full">
-                                                    <SelectValue>
-                                                        {isLoadingConnections
-                                                            ? "Đang tải..."
-                                                            : connections.find(c => c._id === selectedConnectionId)?.name || "Chọn database"}
-                                                    </SelectValue>
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {connections.map((conn) => (
-                                                        <SelectItem key={conn._id} value={conn._id}>
-                                                            <div className="flex flex-col">
-                                                                <span>{conn.name}</span>
-                                                                <span className="text-xs text-[#94A3B8]">{conn.host} / {conn.database}</span>
+                                        {/* Database Connection Selector - shown in simple and custom modes */}
+                                        {(queryMode === "simple" || queryMode === "custom") && (
+                                            <div>
+                                                <label className="text-xs text-[#64748B] mb-1 block">Chọn Database</label>
+                                                <Select
+                                                    value={selectedConnectionId}
+                                                    onValueChange={handleConnectionChange}
+                                                    disabled={isLoadingConnections || connections.length === 0}
+                                                >
+                                                    <SelectTrigger className="w-full">
+                                                        <SelectValue>
+                                                            {isLoadingConnections
+                                                                ? "Đang tải..."
+                                                                : connections.find(c => c._id === selectedConnectionId)?.name || "Chọn database"}
+                                                        </SelectValue>
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {connections.map((conn) => (
+                                                            <SelectItem key={conn._id} value={conn._id}>
+                                                                <div className="flex flex-col">
+                                                                    <span>{conn.name}</span>
+                                                                    <span className="text-xs text-[#94A3B8]">{conn.host} / {conn.database}</span>
+                                                                </div>
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        )}
+
+                                        {/* ============ IMPORT MODE ============ */}
+                                        {queryMode === "import" && (
+                                            <>
+                                                {/* File Upload Area */}
+                                                <div className="border-2 border-dashed border-[#E2E8F0] rounded-lg p-6 text-center hover:border-[#0052CC] transition-colors">
+                                                    <input
+                                                        type="file"
+                                                        id="file-upload"
+                                                        accept=".xlsx,.xls,.csv"
+                                                        className="hidden"
+                                                        onChange={async (e) => {
+                                                            const file = e.target.files?.[0];
+                                                            if (!file) return;
+
+                                                            setIsParsingFile(true);
+                                                            setImportedFileName(file.name);
+
+                                                            try {
+                                                                const data = await file.arrayBuffer();
+                                                                const workbook = XLSX.read(data, { type: 'array' });
+                                                                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                                                                const jsonData = XLSX.utils.sheet_to_json(firstSheet) as Record<string, unknown>[];
+
+                                                                if (jsonData.length === 0) {
+                                                                    toast.error("File không có dữ liệu");
+                                                                    return;
+                                                                }
+
+                                                                // Get columns from first row
+                                                                const cols = Object.keys(jsonData[0]);
+                                                                setImportedColumns(cols);
+                                                                setImportedData(jsonData);
+                                                                setChartData(jsonData);
+
+                                                                // Auto-select first column as X-axis
+                                                                if (cols.length > 0) {
+                                                                    setImportXAxis(cols[0]);
+                                                                }
+                                                                // Auto-select numeric columns as Y-axis
+                                                                const numericCols = cols.filter(col =>
+                                                                    typeof jsonData[0][col] === 'number'
+                                                                );
+                                                                if (numericCols.length > 0) {
+                                                                    setImportYAxis([numericCols[0]]);
+                                                                }
+
+                                                                toast.success(`Đã import ${jsonData.length} dòng từ "${file.name}"`);
+                                                            } catch (error) {
+                                                                console.error('Parse error:', error);
+                                                                toast.error("Không thể đọc file. Vui lòng kiểm tra định dạng.");
+                                                            } finally {
+                                                                setIsParsingFile(false);
+                                                            }
+                                                        }}
+                                                    />
+                                                    <label htmlFor="file-upload" className="cursor-pointer">
+                                                        {isParsingFile ? (
+                                                            <div className="flex flex-col items-center">
+                                                                <Loader2 className="h-10 w-10 text-[#0052CC] animate-spin mb-2" />
+                                                                <p className="text-sm text-[#64748B]">Đang xử lý...</p>
                                                             </div>
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
+                                                        ) : importedFileName ? (
+                                                            <div className="flex flex-col items-center">
+                                                                <FileSpreadsheet className="h-10 w-10 text-green-500 mb-2" />
+                                                                <p className="text-sm font-medium text-[#0F172A]">{importedFileName}</p>
+                                                                <p className="text-xs text-[#64748B]">{importedData.length} dòng • {importedColumns.length} cột</p>
+                                                                <p className="text-xs text-[#0052CC] mt-2">Click để chọn file khác</p>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex flex-col items-center">
+                                                                <Upload className="h-10 w-10 text-[#94A3B8] mb-2" />
+                                                                <p className="text-sm font-medium text-[#0F172A]">Chọn file Excel hoặc CSV</p>
+                                                                <p className="text-xs text-[#64748B]">Hỗ trợ .xlsx, .xls, .csv</p>
+                                                            </div>
+                                                        )}
+                                                    </label>
+                                                </div>
+
+                                                {/* Column Selection for Import */}
+                                                {importedColumns.length > 0 && (
+                                                    <>
+                                                        {/* X-Axis Selection */}
+                                                        <div>
+                                                            <label className="text-xs text-[#64748B] mb-1 block">Trục X (Labels)</label>
+                                                            <Select value={importXAxis} onValueChange={setImportXAxis}>
+                                                                <SelectTrigger className="w-full">
+                                                                    <SelectValue />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    {importedColumns.map(col => (
+                                                                        <SelectItem key={col} value={col}>{col}</SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+
+                                                        {/* Y-Axis Selection */}
+                                                        <div>
+                                                            <label className="text-xs text-[#64748B] mb-1 block">Trục Y (Values)</label>
+                                                            <div className="space-y-2 max-h-40 overflow-y-auto border rounded-md p-2">
+                                                                {importedColumns.map(col => (
+                                                                    <label key={col} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-slate-50 p-1 rounded">
+                                                                        <Checkbox
+                                                                            checked={importYAxis.includes(col)}
+                                                                            onCheckedChange={(checked) => {
+                                                                                if (checked) {
+                                                                                    setImportYAxis([...importYAxis, col]);
+                                                                                } else {
+                                                                                    setImportYAxis(importYAxis.filter(c => c !== col));
+                                                                                }
+                                                                            }}
+                                                                        />
+                                                                        <span>{col}</span>
+                                                                        {typeof importedData[0]?.[col] === 'number' && (
+                                                                            <span className="text-[10px] bg-blue-100 text-blue-600 px-1 rounded">số</span>
+                                                                        )}
+                                                                    </label>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Drill-down Label Field for Import */}
+                                                        <div>
+                                                            <label className="text-xs text-[#64748B] mb-1 block">Trường nhãn Drill-down</label>
+                                                            <Select
+                                                                value={drillDownLabelField}
+                                                                onValueChange={setDrillDownLabelField}
+                                                            >
+                                                                <SelectTrigger className="w-full">
+                                                                    <SelectValue />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="">-- Mặc định --</SelectItem>
+                                                                    {importedColumns.map(col => (
+                                                                        <SelectItem key={col} value={col}>{col}</SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                            <p className="text-[10px] text-[#94A3B8] mt-1">Trường hiển thị khi xem chi tiết</p>
+                                                        </div>
+
+                                                        {/* Group By for Import */}
+                                                        <div>
+                                                            <label className="text-xs text-[#64748B] mb-1 block">Nhóm thêm theo (tuỳ chọn)</label>
+                                                            <div className="space-y-1 max-h-24 overflow-y-auto border rounded-md p-2">
+                                                                {importedColumns.filter(c => c !== importXAxis && !importYAxis.includes(c)).map((col) => (
+                                                                    <label key={col} className="flex items-center gap-2 text-xs">
+                                                                        <Checkbox
+                                                                            checked={groupBy.includes(col)}
+                                                                            onCheckedChange={(checked) => {
+                                                                                if (checked) {
+                                                                                    setGroupBy([...groupBy, col]);
+                                                                                } else {
+                                                                                    setGroupBy(groupBy.filter(g => g !== col));
+                                                                                }
+                                                                            }}
+                                                                        />
+                                                                        {col}
+                                                                    </label>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Order By for Import */}
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <div>
+                                                                <label className="text-xs text-[#64748B] mb-1 block">Sắp xếp theo</label>
+                                                                <Select value={orderBy || "_none"} onValueChange={(v) => setOrderBy(v === "_none" ? "" : v)}>
+                                                                    <SelectTrigger>
+                                                                        <SelectValue />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        <SelectItem value="_none">Không sắp xếp</SelectItem>
+                                                                        {importedColumns.map(col => (
+                                                                            <SelectItem key={col} value={col}>{col}</SelectItem>
+                                                                        ))}
+                                                                    </SelectContent>
+                                                                </Select>
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-xs text-[#64748B] mb-1 block">Thứ tự</label>
+                                                                <Select value={orderDirection} onValueChange={(v) => setOrderDirection(v as "asc" | "desc")} disabled={!orderBy}>
+                                                                    <SelectTrigger>
+                                                                        <SelectValue />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        <SelectItem value="asc">Tăng dần</SelectItem>
+                                                                        <SelectItem value="desc">Giảm dần</SelectItem>
+                                                                    </SelectContent>
+                                                                </Select>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Limit for Import */}
+                                                        <div>
+                                                            <label className="text-xs text-[#64748B] mb-1 block">Giới hạn (TOP)</label>
+                                                            <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))}>
+                                                                <SelectTrigger>
+                                                                    <SelectValue />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="0">Tất cả</SelectItem>
+                                                                    <SelectItem value="10">10</SelectItem>
+                                                                    <SelectItem value="20">20</SelectItem>
+                                                                    <SelectItem value="50">50</SelectItem>
+                                                                    <SelectItem value="100">100</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+
+                                                        {/* Preview Data Table */}
+                                                        <div>
+                                                            <label className="text-xs text-[#64748B] mb-1 flex items-center gap-1">
+                                                                <Table2 className="h-3 w-3" /> Xem trước dữ liệu (5 dòng đầu)
+                                                            </label>
+                                                            <div className="border rounded-md overflow-x-auto max-h-40">
+                                                                <table className="w-full text-xs">
+                                                                    <thead className="bg-slate-50 sticky top-0">
+                                                                        <tr>
+                                                                            {importedColumns.slice(0, 6).map(col => (
+                                                                                <th key={col} className="px-2 py-1 text-left font-medium text-[#64748B] border-b">
+                                                                                    {col}
+                                                                                </th>
+                                                                            ))}
+                                                                            {importedColumns.length > 6 && (
+                                                                                <th className="px-2 py-1 text-left font-medium text-[#64748B] border-b">...</th>
+                                                                            )}
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+                                                                        {importedData.slice(0, 5).map((row, i) => (
+                                                                            <tr key={i} className="border-b last:border-0">
+                                                                                {importedColumns.slice(0, 6).map(col => (
+                                                                                    <td key={col} className="px-2 py-1 text-[#0F172A] truncate max-w-[100px]">
+                                                                                        {String(row[col] ?? '')}
+                                                                                    </td>
+                                                                                ))}
+                                                                                {importedColumns.length > 6 && (
+                                                                                    <td className="px-2 py-1 text-[#94A3B8]">...</td>
+                                                                                )}
+                                                                            </tr>
+                                                                        ))}
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Clear Import */}
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="w-full"
+                                                            onClick={() => {
+                                                                setImportedData([]);
+                                                                setImportedFileName("");
+                                                                setImportedColumns([]);
+                                                                setImportXAxis("");
+                                                                setImportYAxis([]);
+                                                                setChartData([]);
+                                                            }}
+                                                        >
+                                                            <X className="h-3 w-3 mr-1" /> Xóa dữ liệu import
+                                                        </Button>
+                                                    </>
+                                                )}
+                                            </>
+                                        )}
 
                                         {/* ============ CUSTOM SQL MODE ============ */}
                                         {queryMode === "custom" && (
@@ -949,6 +1701,95 @@ GROUP BY THANG, NAM, Ma_DV`}
                                                                     </label>
                                                                 ))}
                                                             </div>
+                                                        </div>
+
+                                                        {/* Drill-down Label Field for SQL */}
+                                                        <div>
+                                                            <label className="text-xs text-[#64748B] mb-1 block">Trường nhãn Drill-down</label>
+                                                            <Select
+                                                                value={drillDownLabelField}
+                                                                onValueChange={(v) => setDrillDownLabelField(v || "")}
+                                                            >
+                                                                <SelectTrigger className="w-full">
+                                                                    <SelectValue />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="">-- Mặc định --</SelectItem>
+                                                                    {customSqlColumns.map(col => (
+                                                                        <SelectItem key={col} value={col}>{col}</SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                            <p className="text-[10px] text-[#94A3B8] mt-1">Trường hiển thị khi xem chi tiết</p>
+                                                        </div>
+
+                                                        {/* Group By for SQL */}
+                                                        <div>
+                                                            <label className="text-xs text-[#64748B] mb-1 block">Nhóm thêm theo (tuỳ chọn)</label>
+                                                            <div className="space-y-1 max-h-24 overflow-y-auto border rounded-md p-2">
+                                                                {customSqlColumns.filter(c => c !== customSqlXAxis && !customSqlYAxis.includes(c)).map((col) => (
+                                                                    <label key={col} className="flex items-center gap-2 text-xs">
+                                                                        <Checkbox
+                                                                            checked={groupBy.includes(col)}
+                                                                            onCheckedChange={(checked) => {
+                                                                                if (checked) {
+                                                                                    setGroupBy([...groupBy, col]);
+                                                                                } else {
+                                                                                    setGroupBy(groupBy.filter(g => g !== col));
+                                                                                }
+                                                                            }}
+                                                                        />
+                                                                        {col}
+                                                                    </label>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Order By for SQL */}
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <div>
+                                                                <label className="text-xs text-[#64748B] mb-1 block">Sắp xếp theo</label>
+                                                                <Select value={orderBy || "_none"} onValueChange={(v) => setOrderBy(v === "_none" ? "" : v)}>
+                                                                    <SelectTrigger>
+                                                                        <SelectValue />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        <SelectItem value="_none">Không sắp xếp</SelectItem>
+                                                                        {customSqlColumns.map(col => (
+                                                                            <SelectItem key={col} value={col}>{col}</SelectItem>
+                                                                        ))}
+                                                                    </SelectContent>
+                                                                </Select>
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-xs text-[#64748B] mb-1 block">Thứ tự</label>
+                                                                <Select value={orderDirection} onValueChange={(v) => setOrderDirection(v as "asc" | "desc")} disabled={!orderBy}>
+                                                                    <SelectTrigger>
+                                                                        <SelectValue />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        <SelectItem value="asc">Tăng dần</SelectItem>
+                                                                        <SelectItem value="desc">Giảm dần</SelectItem>
+                                                                    </SelectContent>
+                                                                </Select>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Limit for SQL */}
+                                                        <div>
+                                                            <label className="text-xs text-[#64748B] mb-1 block">Giới hạn (TOP)</label>
+                                                            <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))}>
+                                                                <SelectTrigger>
+                                                                    <SelectValue />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="0">Tất cả</SelectItem>
+                                                                    <SelectItem value="10">10</SelectItem>
+                                                                    <SelectItem value="20">20</SelectItem>
+                                                                    <SelectItem value="50">50</SelectItem>
+                                                                    <SelectItem value="100">100</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
                                                         </div>
                                                     </>
                                                 )}
@@ -1126,6 +1967,35 @@ GROUP BY THANG, NAM, Ma_DV`}
 
                                                     <p className="text-[10px] text-[#94A3B8] mt-2">
                                                         Dashboard sẽ lọc theo 2 cột này khi có Global Filter.
+                                                    </p>
+                                                </div>
+
+                                                {/* Drill-down Label Field */}
+                                                <div className="pt-2 border-t border-[#E2E8F0] mt-2">
+                                                    <label className="text-xs text-[#64748B] mb-2 block font-medium">
+                                                        Cột label khi Drill-down
+                                                    </label>
+                                                    <Select
+                                                        value={drillDownLabelField || ""}
+                                                        onValueChange={(val) => setDrillDownLabelField(val ?? "")}
+                                                        disabled={columns.length === 0}
+                                                    >
+                                                        <SelectTrigger className="h-8 text-xs">
+                                                            <SelectValue>
+                                                                {drillDownLabelField || "Chọn cột làm label chi tiết"}
+                                                            </SelectValue>
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="">-- Mặc định (Trục X) --</SelectItem>
+                                                            {columns.map((col) => (
+                                                                <SelectItem key={`drill-${col.name}`} value={col.name}>
+                                                                    {col.name}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <p className="text-[10px] text-[#94A3B8] mt-1">
+                                                        Khi click để xem chi tiết, cột này sẽ là label trục X.
                                                     </p>
                                                 </div>
 
@@ -1416,6 +2286,30 @@ GROUP BY THANG, NAM, Ma_DV`}
                                             </div>
                                         )}
 
+                                        {/* Pie Variant Selector - only for pie charts */}
+                                        {currentChart.type === 'pie' && (
+                                            <div>
+                                                <label className="text-xs text-[#64748B] mb-1 block">
+                                                    Kiểu biểu đồ tròn
+                                                </label>
+                                                <Select
+                                                    value={pieVariant}
+                                                    onValueChange={(v) => setPieVariant(v as "default" | "sized" | "donut")}
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue>
+                                                            {pieVariant === 'default' ? 'Mặc định' : pieVariant === 'sized' ? 'Theo kích thước' : 'Donut'}
+                                                        </SelectValue>
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="default">Mặc định</SelectItem>
+                                                        <SelectItem value="sized">Theo kích thước (Sized)</SelectItem>
+                                                        <SelectItem value="donut">Donut</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        )}
+
                                         {/* Grid Toggle */}
                                         <div className="flex items-center justify-between">
                                             <label className="text-sm text-[#0F172A]">Hiển thị lưới</label>
@@ -1521,73 +2415,136 @@ GROUP BY THANG, NAM, Ma_DV`}
                                         {currentChart.type === 'card' && (
                                             <div className="space-y-4 pt-2 border-t border-[#E2E8F0] mt-2">
                                                 <label className="text-sm font-semibold text-[#0F172A]">
-                                                    Tùy chỉnh thẻ số
+                                                    Tùy chỉnh thẻ thống kê
                                                 </label>
 
-                                                {/* Font Size */}
-                                                <div>
-                                                    <label className="text-xs text-[#64748B] mb-1 block">Kích thước chữ</label>
-                                                    <Select
-                                                        value={cardFontSize}
-                                                        onValueChange={(v: any) => setCardFontSize(v)}
-                                                    >
-                                                        <SelectTrigger className="h-8">
-                                                            <SelectValue>
-                                                                {cardFontSize === 'sm' ? "Nhỏ" :
-                                                                    cardFontSize === 'md' ? "Trung bình" :
-                                                                        cardFontSize === 'lg' ? "Lớn" :
-                                                                            cardFontSize === 'xl' ? "Rất lớn" : "Chọn kích thước"}
-                                                            </SelectValue>
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="sm">Nhỏ</SelectItem>
-                                                            <SelectItem value="md">Trung bình</SelectItem>
-                                                            <SelectItem value="lg">Lớn</SelectItem>
-                                                            <SelectItem value="xl">Rất lớn</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
+                                                {/* Basic Card Settings */}
+                                                <div className="space-y-4">
+                                                    <div>
+                                                        <label className="text-xs text-[#64748B] mb-1 block">Tiêu đề thẻ</label>
+                                                        <Input
+                                                            value={chartName}
+                                                            onChange={(e) => setChartName(e.target.value)}
+                                                            placeholder="VD: Thống kê bán hàng"
+                                                            className="h-8"
+                                                        />
+                                                    </div>
+
+                                                    {/* Icon */}
+                                                    <div>
+                                                        <label className="text-xs text-[#64748B] mb-1 block">Icon</label>
+                                                        <IconPicker
+                                                            value={cardIcon}
+                                                            onChange={setCardIcon}
+                                                            placeholder="Chọn icon..."
+                                                            className="h-8 text-sm"
+                                                        />
+                                                    </div>
+
+                                                    {/* Colors */}
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <div>
+                                                            <label className="text-xs text-[#64748B] mb-1 block">Màu nền</label>
+                                                            <div className="flex items-center gap-2">
+                                                                <ColorPicker value={cardBackgroundColor || '#FFFFFF'} onChange={setCardBackgroundColor} />
+                                                                <span className="text-xs text-[#64748B]">{cardBackgroundColor || 'Trắng'}</span>
+                                                            </div>
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-xs text-[#64748B] mb-1 block">Màu chính</label>
+                                                            <div className="flex items-center gap-2">
+                                                                <ColorPicker value={cardColor || '#0066FF'} onChange={setCardColor} />
+                                                                <span className="text-xs text-[#64748B]">{cardColor || 'Xanh'}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 </div>
 
-                                                {/* Colors */}
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div>
-                                                        <label className="text-xs text-[#64748B] mb-1 block">Màu chữ</label>
-                                                        <div className="flex items-center gap-2">
-                                                            <ColorPicker value={cardColor || '#000000'} onChange={setCardColor} />
-                                                            <span className="text-xs text-[#64748B]">{cardColor ? cardColor : 'Mặc định'}</span>
-                                                        </div>
-                                                    </div>
-                                                    <div>
-                                                        <label className="text-xs text-[#64748B] mb-1 block">Màu nền card</label>
-                                                        <div className="flex items-center gap-2">
-                                                            <ColorPicker value={cardBackgroundColor || '#FFFFFF'} onChange={setCardBackgroundColor} />
-                                                            <span className="text-xs text-[#64748B]">{cardBackgroundColor ? cardBackgroundColor : 'Trống'}</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                {/* Icon */}
-                                                <div>
-                                                    <div className="flex items-center justify-between mb-1">
-                                                        <label className="text-xs text-[#64748B]">Icon (Lucide name)</label>
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-xs text-[#64748B]">Hiển thị</span>
-                                                            <Checkbox
-                                                                checked={showCardIcon}
-                                                                onCheckedChange={(checked) => setShowCardIcon(checked as boolean)}
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                    <Input
-                                                        value={cardIcon}
-                                                        onChange={(e) => setCardIcon(e.target.value)}
-                                                        placeholder="VD: TrendingUp, Users, DollarSign..."
-                                                        className="h-8 text-sm"
-                                                        disabled={!showCardIcon}
+                                                {/* Metrics Configuration */}
+                                                <div className="pt-4 border-t border-[#E2E8F0]">
+                                                    <MetricsEditor
+                                                        data={queryMode === 'import' ? importedData : []}
+                                                        availableFields={queryMode === 'import' ? Object.keys(importedData[0] || {}) : []}
+                                                        filters={statCardMetrics}
+                                                        onChange={setStatCardMetrics}
+                                                        onApplyFilters={() => {}} // Not used for cards
+                                                        mode="metrics"
+                                                        className="w-full"
                                                     />
-                                                    <p className="text-[10px] text-slate-400 mt-1">
-                                                        Nhập tên icon từ thư viện Lucide React
-                                                    </p>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* StatCard Customization */}
+                                        {currentChart.type === 'statCard' && (
+                                            <div className="space-y-4 pt-2 border-t border-[#E2E8F0] mt-2">
+                                                <MetricsEditor
+                                                    metrics={statCardMetrics}
+                                                    onChange={setStatCardMetrics}
+                                                />
+                                            </div>
+                                        )}
+
+                                        {/* Map Chart Customization */}
+                                        {currentChart.type === 'map' && (
+                                            <div className="space-y-4 pt-2 border-t border-[#E2E8F0] mt-2">
+                                                <label className="text-sm font-semibold text-[#0F172A]">
+                                                    Tùy chỉnh bản đồ
+                                                </label>
+
+                                                {/* Map Filter Configuration */}
+                                                <div className="space-y-4">
+                                                    <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
+                                                        <div className="text-xs font-medium text-blue-800 dark:text-blue-200 mb-2">
+                                                            Lọc theo dữ liệu đã cấu hình:
+                                                        </div>
+                                                        <div className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
+                                                            <div>Trục X: <span className="font-medium">{selectedXAxis || "Chưa chọn"}</span> (đơn vị TTVT - chú thích)</div>
+                                                            <div>Trục Y: <span className="font-medium">{selectedYAxis.join(", ") || "Chưa chọn"}</span> (các lớp - loại hình thuê bao)</div>
+                                                        </div>
+                                                        <div className="mt-2 text-xs text-blue-600 dark:text-blue-400">
+                                                            Chú thích hiển thị các đơn vị TTVT từ trục X. Hover/click để xem chi tiết các loại hình thuê bao từ trục Y.
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Map Styling Options */}
+                                                    <div className="space-y-3">
+                                                        <div>
+                                                            <label className="text-xs text-[#64748B] mb-1 block">Chế độ hiển thị</label>
+                                                            <Select
+                                                                value={mapDisplayMode || "choropleth"}
+                                                                onValueChange={(value) => setMapDisplayMode(value)}
+                                                            >
+                                                                <SelectTrigger className="h-8">
+                                                                    <SelectValue />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="choropleth">Bản đồ màu (Choropleth)</SelectItem>
+                                                                    <SelectItem value="bubbles">Bubbles (Vòng tròn)</SelectItem>
+                                                                    <SelectItem value="heatmap">Heatmap (Nhiệt độ)</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="text-xs text-[#64748B] mb-1 block">Màu sắc chủ đề</label>
+                                                            <Select
+                                                                value={mapColorScheme || "default"}
+                                                                onValueChange={(value) => setMapColorScheme(value)}
+                                                            >
+                                                                <SelectTrigger className="h-8">
+                                                                    <SelectValue />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="default">Mặc định</SelectItem>
+                                                                    <SelectItem value="blues">Xanh dương</SelectItem>
+                                                                    <SelectItem value="greens">Xanh lá</SelectItem>
+                                                                    <SelectItem value="reds">Đỏ</SelectItem>
+                                                                    <SelectItem value="purples">Tím</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
                                         )}
@@ -1753,13 +2710,22 @@ GROUP BY THANG, NAM, Ma_DV`}
                                             Thử lại
                                         </Button>
                                     </div>
-                                ) : chartData.length === 0 ? (
+                                ) : aggregatedChartData.length === 0 ? (
                                     <div className="flex flex-col items-center justify-center h-full text-center text-[#64748B]">
                                         <Database className="h-12 w-12 mb-4 text-[#94A3B8]" />
-                                        <p>Chọn bảng, trục X và trục Y để xem biểu đồ</p>
+                                        <p>
+                                            {queryMode === 'import'
+                                                ? 'Upload file và chọn trục X, Y để xem biểu đồ'
+                                                : 'Chọn bảng, trục X và trục Y để xem biểu đồ'}
+                                        </p>
                                     </div>
                                 ) : (
-                                    <DynamicChart config={previewConfig} data={aggregatedChartData} />
+                                    <InteractiveChart
+                                        config={previewConfig}
+                                        data={aggregatedChartData}
+                                        chartId="preview-chart"
+                                        onDrillDown={handlePreviewDrillDown}
+                                    />
                                 )}
                             </div>
 
@@ -1770,9 +2736,11 @@ GROUP BY THANG, NAM, Ma_DV`}
                                 </h4>
                                 <div className="grid grid-cols-2 gap-4 text-sm">
                                     <div>
-                                        <span className="text-[#64748B]">Bảng:</span>{" "}
+                                        <span className="text-[#64748B]">Nguồn:</span>{" "}
                                         <span className="font-medium text-[#0F172A]">
-                                            {selectedTable || "(chưa chọn)"}
+                                            {queryMode === 'import'
+                                                ? (importedFileName || "(chưa upload)")
+                                                : (selectedTable || "(chưa chọn)")}
                                         </span>
                                     </div>
                                     <div>
@@ -1784,13 +2752,17 @@ GROUP BY THANG, NAM, Ma_DV`}
                                     <div>
                                         <span className="text-[#64748B]">Trục X:</span>{" "}
                                         <span className="font-medium text-[#0F172A]">
-                                            {selectedXAxis || "(chưa chọn)"}
+                                            {queryMode === 'import'
+                                                ? (importXAxis || "(chưa chọn)")
+                                                : (selectedXAxis || "(chưa chọn)")}
                                         </span>
                                     </div>
                                     <div>
                                         <span className="text-[#64748B]">Trục Y:</span>{" "}
                                         <span className="font-medium text-[#0F172A]">
-                                            {selectedYAxis.length > 0 ? selectedYAxis.join(", ") : "(chưa chọn)"}
+                                            {queryMode === 'import'
+                                                ? (importYAxis.length > 0 ? importYAxis.join(", ") : "(chưa chọn)")
+                                                : (selectedYAxis.length > 0 ? selectedYAxis.join(", ") : "(chưa chọn)")}
                                         </span>
                                     </div>
                                 </div>

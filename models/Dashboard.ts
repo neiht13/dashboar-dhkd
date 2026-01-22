@@ -45,6 +45,11 @@ export interface IDashboard extends Document {
     publicPermission?: 'view' | 'edit';
     thumbnail?: string;
     tags: string[];
+    // Organization & Tracking
+    folderId?: mongoose.Types.ObjectId;
+    isFavorite: boolean;
+    lastViewedAt?: Date;
+    viewCount: number;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -129,6 +134,24 @@ const DashboardSchema = new Schema<IDashboard>(
         }],
         activeTabId: {
             type: String,
+        },
+        // Organization & Tracking
+        folderId: {
+            type: Schema.Types.ObjectId,
+            ref: 'Folder',
+            index: true,
+        },
+        isFavorite: {
+            type: Boolean,
+            default: false,
+            index: true,
+        },
+        lastViewedAt: {
+            type: Date,
+        },
+        viewCount: {
+            type: Number,
+            default: 0,
         },
     },
     {

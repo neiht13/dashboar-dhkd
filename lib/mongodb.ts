@@ -1,9 +1,16 @@
 import mongoose from 'mongoose';
 import { MongoClient, Db } from 'mongodb';
 
-// Use full connection string with database name
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://neiht:hj6scsg4@10.93.30.39:28224/telecom_dashboard';
-const DATABASE_NAME = 'telecom_dashboard';
+// MongoDB connection - MUST be set via environment variables
+const MONGODB_URI = process.env.MONGODB_URI;
+const DATABASE_NAME = process.env.MONGODB_DATABASE || 'telecom_dashboard';
+
+if (!MONGODB_URI) {
+    throw new Error(
+        'Please define the MONGODB_URI environment variable inside .env.local\n' +
+        'See .env.example for reference.'
+    );
+}
 
 interface CachedConnection {
     conn: typeof mongoose | null;

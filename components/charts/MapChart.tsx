@@ -1,11 +1,15 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from 'react';
-import { ChartConfig } from '@/types';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { ChartConfig, Filter } from '@/types';
 import { Map as MapComponent, MapControls, useMap, MapMarker, MarkerContent, MarkerLabel, MarkerPopup } from '@/components/ui/map';
+import { FilterBuilder } from '@/components/ui/FilterBuilder';
 import maplibregl, { LngLatBounds } from 'maplibre-gl';
-import { Star, Navigation, Clock, ExternalLink, Building } from "lucide-react";
+import { Star, Navigation, Clock, ExternalLink, Building, MapPin, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 // Use require or import to load JSON.
@@ -17,6 +21,159 @@ interface MapChartProps {
     width?: number | string;
     height?: number | string;
 }
+
+// Filter Panel Component - Left sidebar for map filters
+const FilterPanel = ({
+    xAxisOptions,
+    yAxisOptions,
+    selectedXAxis,
+    selectedYAxisLayers,
+    onXAxisChange,
+    onYAxisChange
+}: {
+    xAxisOptions: { value: string; label: string }[];
+    yAxisOptions: { value: string; label: string }[];
+    selectedXAxis: string;
+    selectedYAxisLayers: string[];
+    onXAxisChange: (value: string) => void;
+    onYAxisChange: (layers: string[]) => void;
+}) => {
+    const handleSelectAll = () => {
+        if (selectedYAxisLayers.length === yAxisOptions.length) {
+            onYAxisChange([]); // Deselect all
+        } else {
+            onYAxisChange(yAxisOptions.map(o => o.value)); // Select all
+        }
+    };
+
+    const handleLayerToggle = (value: string) => {
+        if (selectedYAxisLayers.includes(value)) {
+            onYAxisChange(selectedYAxisLayers.filter(v => v !== value));
+        } else {
+            onYAxisChange([...selectedYAxisLayers, value]);
+        }
+    };
+
+    return (
+        <div className="absolute left-2 top-2 z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 w-56 max-h-[calc(100%-16px)] overflow-hidden flex flex-col">
+            {/* X-Axis Filter - Region Type */}
+            <div className="p-3 border-b border-slate-200 dark:border-slate-700">
+                <div className="flex items-center gap-2 mb-3">
+                    <MapPin className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    <span className="font-semibold text-sm text-slate-700 dark:text-slate-200">LOẠI KHU VỰC</span>
+                </div>
+                <div className="space-y-2">
+                    {xAxisOptions.map((option) => (
+                        <label
+                            key={option.value}
+                            className="flex items-center gap-2 cursor-pointer group"
+                        >
+                            <input
+                                type="radio"
+                                name="xAxisFilter"
+                                value={option.value}
+                                checked={selectedXAxis === option.value}
+                                onChange={() => onXAxisChange(option.value)}
+                                className="w-4 h-4 text-blue-600 border-slate-300 focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-slate-800 dark:bg-slate-700 dark:border-slate-600"
+                            />
+                            <span className="text-sm text-slate-600 dark:text-slate-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                                {option.label}
+                            </span>
+                        </label>
+                    ))}
+                </div>
+                <p className="text-[10px] text-blue-500 dark:text-blue-400 mt-2 italic">
+                    (Nhấn chuột phải vào bản đồ để xem gộp)
+                </p>
+            </div>
+
+            {/* Y-Axis Filter - Layer Types */}
+            <div className="p-3 flex-1 overflow-hidden flex flex-col">
+                <div className="flex items-center gap-2 mb-3">
+                    <Layers className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    <span className="font-semibold text-sm text-slate-700 dark:text-slate-200">LOẠI THUÊ BAO</span>
+                </div>
+                <ScrollArea className="flex-1 -mx-1 px-1">
+                    <div className="space-y-2">
+                        {/* Select All Option */}
+                        <label className="flex items-center gap-2 cursor-pointer group">
+                            <Checkbox
+                                checked={selectedYAxisLayers.length === yAxisOptions.length && yAxisOptions.length > 0}
+                                onCheckedChange={handleSelectAll}
+                                className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                            />
+                            <span className="text-sm font-medium text-slate-700 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-1.5">
+                                <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-gradient-to-br from-blue-500 to-purple-500 text-white text-[10px] font-bold">
+                                    ⚡
+                                </span>
+                                Tất cả
+                            </span>
+                        </label>
+
+                        {/* Individual Layer Options */}
+                        {yAxisOptions.map((option, index) => {
+                            // Generate unique colors/icons for each layer type
+                            const layerColors = [
+                                { bg: 'bg-green-500', icon: 'F', label: 'Fiber' },
+                                { bg: 'bg-orange-500', icon: 'M', label: 'Mega' },
+                                { bg: 'bg-red-500', icon: 'M', label: 'MyTV' },
+                                { bg: 'bg-blue-500', icon: 'C', label: 'Cố định' },
+                                { bg: 'bg-yellow-500', icon: 'G', label: 'GPhone' },
+                                { bg: 'bg-pink-500', icon: 'S', label: 'DD trả sau' },
+                            ];
+                            const colorConfig = layerColors[index % layerColors.length];
+                            const iconLetter = option.label.charAt(0).toUpperCase();
+
+                            return (
+                                <label
+                                    key={option.value}
+                                    className="flex items-center gap-2 cursor-pointer group"
+                                >
+                                    <Checkbox
+                                        checked={selectedYAxisLayers.includes(option.value)}
+                                        onCheckedChange={() => handleLayerToggle(option.value)}
+                                        className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                                    />
+                                    <span className="text-sm text-slate-600 dark:text-slate-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-1.5">
+                                        <span className={`inline-flex items-center justify-center w-5 h-5 rounded ${colorConfig.bg} text-white text-[10px] font-bold`}>
+                                            {iconLetter}
+                                        </span>
+                                        {option.label}
+                                    </span>
+                                </label>
+                            );
+                        })}
+                    </div>
+                </ScrollArea>
+            </div>
+
+            {/* Data Layer Section */}
+            {yAxisOptions.length > 0 && (
+                <div className="p-3 border-t border-slate-200 dark:border-slate-700">
+                    <div className="flex items-center gap-2 mb-2">
+                        <span className="font-semibold text-xs text-slate-500 dark:text-slate-400">LỚP DỮ LIỆU</span>
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <Checkbox defaultChecked className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600 h-3.5 w-3.5" />
+                            <span className="text-xs text-slate-600 dark:text-slate-300 flex items-center gap-1">
+                                <span className="inline-block w-4 h-2 bg-gradient-to-r from-red-500 via-yellow-500 to-green-500 rounded"></span>
+                                Thuê bao phát sinh cước
+                            </span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <Checkbox className="h-3.5 w-3.5" />
+                            <span className="text-xs text-slate-600 dark:text-slate-300 flex items-center gap-1">
+                                <span className="inline-block w-4 h-2 border-2 border-dashed border-red-400 rounded"></span>
+                                Kết cuối
+                            </span>
+                        </label>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
 
 // Extended color palette for unique polygon colors
 const COLORS = [
@@ -48,18 +205,16 @@ function calculateCentroid(coordinates: number[][]) {
 
 const Legend = ({ items }: { items: { code: string; name: string; color: string }[] }) => {
     return (
-        <div className="absolute bottom-8 left-2 bg-white/95 dark:bg-slate-900/95 p-2 rounded shadow text-xs z-10 border border-slate-200 dark:border-slate-800 max-h-[300px] overflow-y-auto">
-            <div className="font-semibold mb-2 text-slate-700 dark:text-slate-200">Chú thích</div>
-            <div className="space-y-1">
+        <div className="absolute top-2 right-2 bg-white/95 dark:bg-slate-900/95 px-3 py-2 rounded shadow text-xs z-10 border border-slate-200 dark:border-slate-800">
+            <div className="flex items-center gap-4">
                 {items.map((item) => (
-                    <div key={item.code} className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: item.color }}></div>
-                        <span className="text-slate-600 dark:text-slate-300 truncate max-w-[120px]" title={item.code}>
-                            {item.code}
-                        </span>
-                        -
-                        <span className="text-slate-600 dark:text-slate-300 truncate max-w-[120px]" title={item.name}>
-                            {item.name && item.name.replace('TTVT', '')}
+                    <div key={item.code} className="flex items-center gap-1.5">
+                        <div 
+                            className="w-3 h-3 rounded-full flex-shrink-0 border border-white shadow-sm" 
+                            style={{ backgroundColor: item.color }}
+                        ></div>
+                        <span className="text-slate-600 dark:text-slate-300 whitespace-nowrap text-[11px] font-medium">
+                            {item.name}
                         </span>
                     </div>
                 ))}
@@ -188,16 +343,9 @@ const MapLayers = ({ data, config, setLegendItems }: { data: any[], config: Char
                 };
             });
 
-            // Create Point Features for Labels (Centroids)
+            // Create Point Features for Labels (Centroids) - show TTVT codes only
             const labelFeatures = (geoData as any).features.map((f: any) => {
                 const code = f.attributes.ma_ttvt;
-                const xAxisKey = dataSource?.xAxis;
-                const yAxisKey = dataSource?.yAxis?.[0];
-                let valStr = '';
-                if (xAxisKey && yAxisKey) {
-                    const item = data.find(d => String(d[xAxisKey]).trim() === String(code).trim());
-                    if (item) valStr = `\n${Number(item[yAxisKey]).toLocaleString()}`;
-                }
 
                 // Calculate centroid
                 const rings = f.geometry.rings;
@@ -225,7 +373,7 @@ const MapLayers = ({ data, config, setLegendItems }: { data: any[], config: Char
                     },
                     properties: {
                         ...f.attributes,
-                        description: `${f.attributes.ma_ttvt}${valStr}`
+                        description: f.attributes.ma_ttvt
                     }
                 };
             });
@@ -296,11 +444,11 @@ const MapLayers = ({ data, config, setLegendItems }: { data: any[], config: Char
                 }
             });
 
-            // Create a popup
+            // Create a popup with custom styling
             const popup = new maplibregl.Popup({
                 closeButton: false,
                 closeOnClick: false,
-                className: 'custom-popup'
+                className: 'map-hover-popup'
             });
 
             map.on('mousemove', 'ttvt-fill', (e) => {
@@ -311,25 +459,42 @@ const MapLayers = ({ data, config, setLegendItems }: { data: any[], config: Char
                     const name = feature.properties?.ten_ttvt || feature.properties?.ma_ttvt;
                     const code = feature.properties?.ma_ttvt;
 
-                    // Find data value
+                    // Find data values for selected yAxis fields only
                     const xAxisKey = dataSource?.xAxis;
-                    const yAxisKey = dataSource?.yAxis?.[0];
+                    const yAxisFields = dataSource?.yAxis || [];
                     let valueDisplay = '';
+                    let totalValue = 0;
 
-                    if (xAxisKey && yAxisKey && code) {
+                    if (xAxisKey && yAxisFields.length > 0 && code) {
                         const item = data.find(d => String(d[xAxisKey]).trim() === String(code).trim());
                         if (item) {
-                            const val = item[yAxisKey];
-                            valueDisplay = `<div style="margin-top:2px; font-size: 12px;">${config.style?.yAxisLabel || yAxisKey}: <span style="font-weight:600;">${Number(val).toLocaleString()}</span></div>`;
+                            // Calculate total for selected layers
+                            yAxisFields.forEach(field => {
+                                totalValue += Number(item[field] || 0);
+                            });
+
+                            // Show total first
+                            valueDisplay = `<div style="margin-top:4px; font-size: 12px; font-weight: 600; color: #2563eb; border-bottom: 1px dashed #e2e8f0; padding-bottom: 4px; margin-bottom: 4px;">Tổng: ${totalValue.toLocaleString()}</div>`;
+
+                            // Show each selected yAxis field
+                            valueDisplay += yAxisFields.map(field => {
+                                const value = Number(item[field] || 0);
+                                const fieldName = config.style?.yAxisFieldLabels?.[field] || field;
+                                const percent = totalValue > 0 ? ((value / totalValue) * 100).toFixed(1) : '0';
+                                return `<div style="margin-top:2px; font-size: 11px; display: flex; justify-content: space-between;">
+                                    <span>${fieldName}:</span>
+                                    <span style="font-weight:600;">${value.toLocaleString()} <span style="color: #64748b; font-size: 10px;">(${percent}%)</span></span>
+                                </div>`;
+                            }).join('');
                         } else {
-                            valueDisplay = `<div style="margin-top:2px; font-size: 12px; opacity: 0.7;">No data</div>`;
+                            valueDisplay = `<div style="margin-top:2px; font-size: 12px; opacity: 0.7;">Không có dữ liệu</div>`;
                         }
                     }
 
                     if (name) {
                         popup.setLngLat(e.lngLat)
-                            .setHTML(`<div style="padding: 4px; color: #0f172a; min-width: 120px;">
-                                 <div style="font-weight: bold; font-size: 13px; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px; margin-bottom: 2px;">${name}</div>
+                            .setHTML(`<div style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(8px); border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; color: #0f172a; min-width: 180px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);">
+                                 <div style="font-weight: bold; font-size: 13px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 4px;">${name}</div>
                                  ${valueDisplay}
                              </div>`)
                             .addTo(map);
@@ -345,44 +510,74 @@ const MapLayers = ({ data, config, setLegendItems }: { data: any[], config: Char
 
     }, [map, isLoaded, dataSource, data, config.style?.yAxisLabel]);
 
-    // Assign unique colors to each unit (ma_ttvt) and update legend
+    // Assign colors based on yAxis data and update legend
     useEffect(() => {
         if (!map || !isLoaded || !map.getLayer('ttvt-fill')) return;
 
-        // Build color map based on ma_ttvt for consistent colors per unit
-        const matchExpression: any[] = ['match', ['get', 'ma_ttvt']];
-        const codeColorMap = new Map<string, { name: string; color: string }>();
-        let colorIndex = 0;
+        const yAxisFields = dataSource?.yAxis || [];
+        const xAxisField = dataSource?.xAxis;
 
-        // Collect unique codes and assign colors
-        (geoData as any).features.forEach((f: any) => {
-            const code = f.attributes.ma_ttvt;
-            const name = f.attributes.ten_ttvt || code;
+        if (!xAxisField || yAxisFields.length === 0) return;
 
-            if (!codeColorMap.has(code)) {
-                const color = COLORS[colorIndex % COLORS.length];
-                codeColorMap.set(code, { name, color });
-                colorIndex++;
-            }
+        // Calculate total values for each region to determine color intensity
+        const regionTotals: { [key: string]: number } = {};
+        let maxTotal = 0;
+        let minTotal = Infinity;
+
+        data.forEach(item => {
+            const code = String(item[xAxisField]).trim();
+            let total = 0;
+            yAxisFields.forEach(field => {
+                total += Number(item[field] || 0);
+            });
+            regionTotals[code] = total;
+            if (total > maxTotal) maxTotal = total;
+            if (total < minTotal && total > 0) minTotal = total;
         });
 
-        // Build match expression and legend items
-        const legendItems: { code: string; name: string; color: string }[] = [];
-        codeColorMap.forEach(({ name, color }, code) => {
+        // Define color thresholds for heatmap-style coloring
+        // Low (orange/red) -> Medium (yellow) -> High (green)
+        const getColorByValue = (value: number): string => {
+            if (maxTotal === 0) return '#e2e8f0';
+            const ratio = (value - minTotal) / (maxTotal - minTotal || 1);
+            
+            if (ratio < 0.33) {
+                return '#f97316'; // Orange - Low (Vùng tỉ lệ thấp)
+            } else if (ratio < 0.66) {
+                return '#facc15'; // Yellow - Medium (Vùng tỉ lệ trung bình)
+            } else {
+                return '#22c55e'; // Green - High (Vùng tỉ lệ cao)
+            }
+        };
+
+        // Create legend items for value ranges (like the reference image)
+        const legendItems: { code: string; name: string; color: string }[] = [
+            { code: 'low', name: 'Vùng tỉ lệ thấp', color: '#f97316' },
+            { code: 'medium', name: 'Vùng tỉ lệ trung bình', color: '#facc15' },
+            { code: 'high', name: 'Vùng tỉ lệ cao', color: '#22c55e' }
+        ];
+
+        // Create color mapping for TTVT units based on their total values
+        const matchExpression: any[] = ['match', ['get', 'ma_ttvt']];
+
+        // Assign colors to each TTVT unit based on their data values
+        (geoData as any).features.forEach((f: any) => {
+            const code = f.attributes.ma_ttvt;
+            const total = regionTotals[code] || 0;
+            const color = getColorByValue(total);
+
             matchExpression.push(code, color);
-            legendItems.push({ code, name, color });
         });
 
         matchExpression.push('#e2e8f0'); // Default fallback
 
-        // Apply colors
+        // Apply colors to map
         map.setPaintProperty('ttvt-fill', 'fill-color', matchExpression);
 
-        // Update legend (sorted by code)
-        legendItems.sort((a, b) => a.code.localeCompare(b.code));
+        // Update legend
         setLegendItems(legendItems);
 
-    }, [map, isLoaded, setLegendItems]);
+    }, [map, isLoaded, dataSource, data, config.style?.mapColorScheme, config.style?.mapDisplayMode, setLegendItems]);
 
     // Add highlight layer and click handler
     useEffect(() => {
@@ -408,15 +603,85 @@ const MapLayers = ({ data, config, setLegendItems }: { data: any[], config: Char
             if (feature?.properties?.ma_ttvt) {
                 const clickedCode = feature.properties.ma_ttvt;
 
-                if (selectedCode === clickedCode) {
-                    // Deselect if clicking same code
-                    setSelectedCode(null);
-                    map.setFilter('ttvt-highlight', ['==', ['get', 'ma_ttvt'], '']);
+                // Update selected code for highlight
+                setSelectedCode(clickedCode);
+
+                // Update fill color for highlight effect
+                if (!map.getLayer('ttvt-highlight-fill')) {
+                    map.addLayer({
+                        id: 'ttvt-highlight-fill',
+                        type: 'fill',
+                        source: 'ttvt-source',
+                        paint: {
+                            'fill-color': 'tomato',
+                            'fill-opacity': 0.7,
+                            'fill-outline-color': '#ff6347'
+                        },
+                        filter: ['==', ['get', 'ma_ttvt'], clickedCode]
+                    });
+
+                    // Add 3D extrusion effect (simulated with line width)
+                    map.addLayer({
+                        id: 'ttvt-highlight-3d',
+                        type: 'line',
+                        source: 'ttvt-source',
+                        paint: {
+                            'line-color': '#ff6347',
+                            'line-width': 3,
+                            'line-opacity': 0.8
+                        },
+                        filter: ['==', ['get', 'ma_ttvt'], clickedCode]
+                    });
                 } else {
-                    // Select new code - highlights ALL polygons with this ma_ttvt
-                    setSelectedCode(clickedCode);
-                    map.setFilter('ttvt-highlight', ['==', ['get', 'ma_ttvt'], clickedCode]);
+                    // Update existing highlight layers
+                    map.setFilter('ttvt-highlight-fill', ['==', ['get', 'ma_ttvt'], clickedCode]);
+                    map.setFilter('ttvt-highlight-3d', ['==', ['get', 'ma_ttvt'], clickedCode]);
                 }
+
+                // Add click popup
+                const name = feature.properties?.ten_ttvt || feature.properties?.ma_ttvt;
+                const xAxisKey = dataSource?.xAxis;
+                const yAxisFields = dataSource?.yAxis || [];
+                let valueDisplay = '';
+                let totalValue = 0;
+
+                if (xAxisKey && yAxisFields.length > 0) {
+                    const item = data.find(d => String(d[xAxisKey]).trim() === String(clickedCode).trim());
+                    if (item) {
+                        // Calculate total for selected layers
+                        yAxisFields.forEach(field => {
+                            totalValue += Number(item[field] || 0);
+                        });
+
+                        // Show total first
+                        valueDisplay = `<div style="margin-top:4px; font-size: 13px; font-weight: 700; color: tomato; border-bottom: 2px dashed #fecaca; padding-bottom: 6px; margin-bottom: 6px;">
+                            Tổng cộng: ${totalValue.toLocaleString()}
+                        </div>`;
+
+                        // Show detailed breakdown of each selected service type
+                        valueDisplay += yAxisFields.map(field => {
+                            const value = Number(item[field] || 0);
+                            const fieldName = config.style?.yAxisFieldLabels?.[field] || field;
+                            const percent = totalValue > 0 ? ((value / totalValue) * 100).toFixed(1) : '0';
+                            return `<div style="margin-top:4px; font-size: 11px; display: flex; justify-content: space-between; align-items: center;">
+                                <span>${fieldName}:</span>
+                                <span style="font-weight:600; color: tomato;">${value.toLocaleString()} <span style="color: #94a3b8; font-size: 10px;">(${percent}%)</span></span>
+                            </div>`;
+                        }).join('');
+                    }
+                }
+
+                const clickPopup = new maplibregl.Popup()
+                    .setLngLat(e.lngLat)
+                    .setHTML(`<div style="background: rgba(255, 255, 255, 0.98); backdrop-filter: blur(10px); border: 2px solid tomato; border-radius: 8px; padding: 12px; color: #0f172a; min-width: 200px; box-shadow: 0 6px 20px rgba(255, 99, 71, 0.3);">
+                             <div style="font-weight: bold; font-size: 14px; border-bottom: 2px solid tomato; padding-bottom: 4px; margin-bottom: 4px; color: tomato;">${name}</div>
+                             ${valueDisplay}
+                             <div style="margin-top: 8px; font-size: 10px; color: #94a3b8; text-align: center;">Đã chọn khu vực này</div>
+                         </div>`)
+                    .addTo(map);
+
+                // Remove popup after 3 seconds
+                setTimeout(() => clickPopup.remove(), 3000);
             }
         };
 
@@ -425,14 +690,72 @@ const MapLayers = ({ data, config, setLegendItems }: { data: any[], config: Char
         return () => {
             map.off('click', 'ttvt-fill', handleClick);
         };
-    }, [map, isLoaded, selectedCode]);
+    }, [map, isLoaded]);
 
     return null;
 };
 
+
 export function MapChart({ data, config, width, height }: MapChartProps) {
-    const { style } = config;
+    const { style, dataSource } = config;
     const [legendItems, setLegendItems] = useState<{ code: string; name: string; color: string }[]>([]);
+
+    // Filter states
+    const [selectedXAxis, setSelectedXAxis] = useState<string>(dataSource?.xAxis || '');
+    const [selectedYAxisLayers, setSelectedYAxisLayers] = useState<string[]>(dataSource?.yAxis || []);
+
+    // Generate X-axis options (region types)
+    const xAxisOptions = useMemo(() => {
+        const options: { value: string; label: string }[] = [];
+        
+        // Default TTVT option
+        if (dataSource?.xAxis) {
+            options.push({
+                value: dataSource.xAxis,
+                label: 'Khu vực TTVT'
+            });
+        }
+        
+        // Add Xa-Phuong option if available (can be extended based on data)
+        // For now, we simulate with the same xAxis but different label
+        options.push({
+            value: 'xa_phuong',
+            label: 'Khu vực Xã - Phường'
+        });
+        
+        return options;
+    }, [dataSource?.xAxis]);
+
+    // Generate Y-axis options (layer types) with friendly labels
+    const yAxisOptions = useMemo(() => {
+        const yAxisFields = dataSource?.yAxis || [];
+        return yAxisFields.map(field => ({
+            value: field,
+            label: style?.yAxisFieldLabels?.[field] || field
+        }));
+    }, [dataSource?.yAxis, style?.yAxisFieldLabels]);
+
+    // Initialize selected layers when config changes
+    useEffect(() => {
+        if (dataSource?.xAxis && selectedXAxis === '') {
+            setSelectedXAxis(dataSource.xAxis);
+        }
+        if (dataSource?.yAxis && selectedYAxisLayers.length === 0) {
+            setSelectedYAxisLayers(dataSource.yAxis);
+        }
+    }, [dataSource?.xAxis, dataSource?.yAxis]);
+
+    // Create filtered config based on selected layers
+    const filteredConfig = useMemo(() => {
+        return {
+            ...config,
+            dataSource: {
+                ...config.dataSource,
+                xAxis: selectedXAxis === 'xa_phuong' ? config.dataSource?.xAxis : selectedXAxis,
+                yAxis: selectedYAxisLayers.length > 0 ? selectedYAxisLayers : config.dataSource?.yAxis
+            }
+        };
+    }, [config, selectedXAxis, selectedYAxisLayers]);
 
     // Center coordinates for region (Dong Thap / Mekong Delta approx)
     const center: [number, number] = [106.35, 10.45];
@@ -444,16 +767,28 @@ export function MapChart({ data, config, width, height }: MapChartProps) {
                 center={center}
                 zoom={9}
             >
+                {/* Filter Panel - Left Side */}
+                {yAxisOptions.length > 0 && (
+                    <FilterPanel
+                        xAxisOptions={xAxisOptions}
+                        yAxisOptions={yAxisOptions}
+                        selectedXAxis={selectedXAxis || xAxisOptions[0]?.value || ''}
+                        selectedYAxisLayers={selectedYAxisLayers}
+                        onXAxisChange={setSelectedXAxis}
+                        onYAxisChange={setSelectedYAxisLayers}
+                    />
+                )}
+
                 <MapControls
                     position="bottom-right"
-                    showZoom
-                    showCompass
-                    showLocate
-                    showFullscreen
-                    show3D
+                    showZoom={true}
+                    showCompass={true}
+                    showLocate={true}
+                    showFullscreen={true}
+                    show3D={true}
                 />
-                <MapLayers data={data} config={config} setLegendItems={setLegendItems} />
-                <MapMarkers data={data} config={config} />
+                <MapLayers data={data} config={filteredConfig} setLegendItems={setLegendItems} />
+                <MapMarkers data={data} config={filteredConfig} />
                 {legendItems.length > 0 && (
                     <Legend items={legendItems} />
                 )}

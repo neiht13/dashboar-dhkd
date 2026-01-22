@@ -3,7 +3,7 @@
 import React, { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { DndContext, DragEndEvent, DragOverlay } from "@dnd-kit/core";
-import { Save, Eye, Edit3, ArrowLeft } from "lucide-react";
+import { Save, Eye, Edit3, ArrowLeft, History, Layout, Palette } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,12 @@ import {
     DialogFooter,
 } from "@/components/ui/dialog";
 import type { Dashboard, WidgetType } from "@/types";
+import { UndoRedoControls } from "@/components/dashboard/UndoRedoControls";
+import { VersionHistory } from "@/components/dashboard/VersionHistory";
+import { TemplateSelector } from "@/components/dashboard/TemplateSelector";
+import { ColorThemeSelector } from "@/components/dashboard/ColorThemeSelector";
+import { useUndoRedoStore } from "@/stores/undo-redo-store";
+import { toast } from "sonner";
 
 interface BuilderPageProps {
     params: Promise<{ dashboardId: string }>;
@@ -47,6 +53,11 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
     const [showNameDialog, setShowNameDialog] = useState(false);
     const [dashboardName, setDashboardName] = useState("");
     const [dashboardDescription, setDashboardDescription] = useState("");
+    const [showVersionHistory, setShowVersionHistory] = useState(false);
+    const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+    
+    // Undo/Redo integration
+    const { initializeState, pushState } = useUndoRedoStore();
 
     // Load or create dashboard
     useEffect(() => {
@@ -111,6 +122,93 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
         }
     }, []); // Run only once on mount
 
+    // Initialize undo/redo state when dashboard loads
+    useEffect(() => {
+        if (currentDashboard) {
+            initializeState({
+                widgets: currentDashboard.widgets || [],
+                layout: currentDashboard.layout || [],
+                name: currentDashboard.name,
+                description: currentDashboard.description,
+            });
+        }
+    }, [currentDashboard?.id]);
+
+    // Push state to history when widgets/layout change
+    useEffect(() => {
+        if (currentDashboard && currentDashboard.widgets.length > 0) {
+            pushState({
+                widgets: currentDashboard.widgets,
+                layout: currentDashboard.layout,
+                name: currentDashboard.name,
+                description: currentDashboard.description,
+            });
+        }
+    }, [currentDashboard?.widgets, currentDashboard?.layout]);
+
+    // Handle undo/redo restore
+    const handleUndoRedo = () => {
+        const state = useUndoRedoStore.getState().present;
+        if (state && currentDashboard) {
+            updateDashboard(currentDashboard.id, {
+                widgets: state.widgets,
+                layout: state.layout,
+            });
+        }
+    };
+
+    // Handle template selection
+    const handleSelectTemplate = async (template: { widgets: unknown[]; layout: unknown[] }) => {
+        if (!currentDashboard) return;
+        
+        // Generate new IDs for widgets
+        const newWidgets = template.widgets.map((w: unknown) => {
+            const widget = w as { id: string; type: string; config: unknown; layout: unknown };
+            const newId = generateId();
+            return {
+                ...widget,
+                id: newId,
+                layout: { ...(widget.layout as object), i: newId },
+            };
+        });
+
+        const newLayout = newWidgets.map((w) => w.layout);
+
+        updateDashboard(currentDashboard.id, {
+            widgets: newWidgets as Dashboard['widgets'],
+            layout: newLayout as Dashboard['layout'],
+        });
+
+        toast.success("Đã áp dụng template!");
+    };
+
+    // Handle version restore
+    const handleVersionRestore = () => {
+        // Refresh dashboard from server
+        if (dashboardId && dashboardId !== "new") {
+            fetchDashboard(dashboardId);
+            toast.success("Đã khôi phục phiên bản");
+        }
+    };
+
+    // Create version snapshot before save
+    const createVersionSnapshot = async () => {
+        if (!currentDashboard || dashboardId === "new") return;
+        
+        try {
+            await fetch('/api/versions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    dashboardId: currentDashboard.id,
+                    changeDescription: `Lưu lúc ${new Date().toLocaleString('vi-VN')}`,
+                }),
+            });
+        } catch (error) {
+            console.error('Error creating version snapshot:', error);
+        }
+    };
+
     const handleCreateDashboard = async () => {
         const newDashboard = await createDashboard(
             dashboardName || "Dashboard chưa đặt tên",
@@ -127,6 +225,9 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
 
         setIsSaving(true);
         try {
+            // Create version snapshot before saving
+            await createVersionSnapshot();
+
             // IMPORTANT: Sync active tab's widgets into the tabs array before saving
             let tabsToSave = currentDashboard.tabs || [];
             if (currentDashboard.activeTabId && tabsToSave.length > 0) {
@@ -149,14 +250,14 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
             const success = await saveDashboardToServer();
 
             if (success) {
-                console.log('Dashboard saved successfully');
+                toast.success('Đã lưu dashboard thành công!');
             } else {
                 console.error('Failed to save dashboard to server');
-                alert('Lưu dashboard thất bại. Vui lòng thử lại.');
+                toast.error('Lưu dashboard thất bại. Vui lòng thử lại.');
             }
         } catch (error) {
             console.error('Error saving dashboard:', error);
-            alert('Có lỗi xảy ra khi lưu. Vui lòng thử lại.');
+            toast.error('Có lỗi xảy ra khi lưu. Vui lòng thử lại.');
         } finally {
             setIsSaving(false);
         }
@@ -228,6 +329,41 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
                             <ArrowLeft className="h-4 w-4" />
                             Quay lại
                         </Button>
+
+                        {/* Undo/Redo Controls */}
+                        {isEditing && (
+                            <UndoRedoControls 
+                                onUndo={handleUndoRedo} 
+                                onRedo={handleUndoRedo}
+                                size="sm"
+                            />
+                        )}
+
+                        {/* Template Selector */}
+                        {isEditing && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setShowTemplateSelector(true)}
+                                className="gap-2"
+                            >
+                                <Layout className="h-4 w-4" />
+                                Template
+                            </Button>
+                        )}
+
+                        {/* Version History */}
+                        {dashboardId !== "new" && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setShowVersionHistory(true)}
+                                className="gap-2"
+                            >
+                                <History className="h-4 w-4" />
+                                Lịch sử
+                            </Button>
+                        )}
 
                         <Button
                             variant={isEditing ? "secondary" : "outline"}
@@ -326,6 +462,23 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            {/* Version History Sheet */}
+            {dashboardId !== "new" && currentDashboard && (
+                <VersionHistory
+                    dashboardId={currentDashboard.id}
+                    open={showVersionHistory}
+                    onOpenChange={setShowVersionHistory}
+                    onRestore={handleVersionRestore}
+                />
+            )}
+
+            {/* Template Selector Dialog */}
+            <TemplateSelector
+                open={showTemplateSelector}
+                onOpenChange={setShowTemplateSelector}
+                onSelectTemplate={handleSelectTemplate}
+            />
         </>
     );
 }

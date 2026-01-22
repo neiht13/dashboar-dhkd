@@ -30,9 +30,11 @@ export type ChartType =
   | 'horizontalBar'
   | 'composed'
   | 'funnel'
-  | 'sizedPie'
+  | 'sizedPie' // Legacy: use pie with pieVariant: 'sized' instead
   | 'map'
-  | 'card';
+  | 'card'
+  | 'hexagon'
+  | 'statCard';
 
 export type AggregationType = 'sum' | 'avg' | 'count' | 'min' | 'max' | 'none';
 
@@ -55,9 +57,14 @@ export interface DataSource {
   dateColumn?: string; // Legacy: Column to apply global date filter on
   startDateColumn?: string; // Column for Start Date filtering
   endDateColumn?: string; // Column for End Date filtering
-  queryMode?: 'simple' | 'custom';
+  queryMode?: 'simple' | 'custom' | 'import';
   customQuery?: string;
   connectionId?: string;
+  // Drill-down settings
+  drillDownLabelField?: string; // Field to use as X-axis label when drilling down to detail
+  // Imported data (for queryMode 'import')
+  importedData?: Record<string, unknown>[];
+  importedFileName?: string;
 }
 
 // Chart Style Preset Types
@@ -79,6 +86,14 @@ export interface ChartStyle {
   dataLabelColor?: string; // Custom data label color
   dataLabelFontSize?: number; // Custom data label font size
   tooltipTheme?: 'light' | 'dark'; // Tooltip theme
+  tooltipStyle?: {
+    backgroundColor?: string;
+    borderColor?: string;
+    textColor?: string;
+    fontSize?: number;
+    borderRadius?: number;
+    shadow?: boolean;
+  };
   xAxisExclude?: string[]; // Values to exclude from X-axis
   composedFieldTypes?: Record<string, 'line' | 'bar'>; // For composed chart: which Y-axis fields are lines vs bars
   yAxisFieldLabels?: Record<string, string>; // Custom display names for Y-axis fields
@@ -91,7 +106,7 @@ export interface ChartStyle {
   stacked?: boolean;
   horizontal?: boolean;
   innerRadius?: number; // for donut chart (0-100 percentage)
-  pieVariant?: 'default' | 'sized'; // Variant for pie chart
+  pieVariant?: 'default' | 'sized' | 'donut' | 'gauge'; // Variant for pie chart
   animation?: boolean;
   gradientFill?: boolean;
   borderRadius?: number;
@@ -103,6 +118,10 @@ export interface ChartStyle {
   cardIcon?: string;
   showCardIcon?: boolean;
   cardBackgroundColor?: string;
+
+  // Map Specific Styles
+  mapDisplayMode?: 'heatmap' | 'category' | 'value';
+  mapColorScheme?: 'default' | 'blues' | 'greens' | 'reds' | 'purples';
 }
 
 export interface ChartConfig {
@@ -201,6 +220,16 @@ export interface ApiResponse<T> {
 }
 
 // User Types
+// StatCard Types
+export interface StatCardMetric {
+  label: string;
+  value: string | number;
+  type?: 'number' | 'percent' | 'sparkline' | 'donut' | 'gauge';
+  chartData?: number[]; // For sparkline
+  progress?: number; // For donut/gauge (0-100)
+  color?: string;
+}
+
 export interface User {
   id: string;
   email: string;

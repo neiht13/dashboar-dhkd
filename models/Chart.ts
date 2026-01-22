@@ -1,41 +1,81 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
+export interface IFilter {
+    field: string;
+    operator: '=' | '!=' | '>' | '<' | '>=' | '<=' | 'like' | 'in';
+    value: string | number | string[] | number[];
+}
+
 export interface IDataSource {
     table: string;
-    xAxis: string;
+    xAxis?: string;
     yAxis: string[];
     aggregation: 'sum' | 'avg' | 'count' | 'min' | 'max';
-    filters?: Record<string, unknown>[];
-    groupBy?: string;
+    filters?: IFilter[];
+    groupBy?: string | string[];
     orderBy?: string;
+    orderDirection?: 'asc' | 'desc';
     limit?: number;
+    // Query mode
+    queryMode?: 'simple' | 'custom' | 'import';
+    customQuery?: string;
+    // Date columns
+    dateColumn?: string;
+    startDateColumn?: string;
+    endDateColumn?: string;
+    // Import mode data
+    importedData?: Record<string, unknown>[];
+    importedFileName?: string;
+    // Drill-down
+    drillDownLabelField?: string;
+    // Connection
+    connectionId?: string;
+    // Resolution for time-based
+    resolution?: 'year' | 'month' | 'day';
 }
 
 export interface IChartStyle {
-    colors: string[];
-    showLegend: boolean;
+    colors?: string[];
+    showLegend?: boolean;
     legendPosition?: 'top' | 'bottom' | 'left' | 'right';
-    showGrid: boolean;
-    showTooltip: boolean;
+    showGrid?: boolean;
+    showTooltip?: boolean;
     showDataLabels?: boolean;
-    dataLabelPosition?: 'inside' | 'outside' | 'center';
+    dataLabelPosition?: 'inside' | 'outside' | 'center' | 'top' | 'bottom' | 'left' | 'right';
+    dataLabelFormat?: 'number' | 'percent' | 'currency' | 'compact';
+    dataLabelColor?: string;
+    dataLabelFontSize?: number;
     title?: string;
     titleFontSize?: number;
     titleColor?: string;
     xAxisLabel?: string;
     yAxisLabel?: string;
+    xAxisExclude?: string[];
     stacked?: boolean;
     horizontal?: boolean;
     innerRadius?: number;
     animation?: boolean;
     gradientFill?: boolean;
     borderRadius?: number;
+    // Tooltip
+    tooltipTheme?: 'default' | 'dark' | 'glass' | 'minimal' | 'gradient';
+    // Composed chart field types
+    composedFieldTypes?: Record<string, 'bar' | 'line' | 'area'>;
+    // Field labels and colors
+    yAxisFieldLabels?: Record<string, string>;
+    yAxisFieldColors?: Record<string, string>;
+    // Card specific
+    cardFontSize?: number;
+    cardColor?: string;
+    cardIcon?: string;
+    showCardIcon?: boolean;
+    cardBackgroundColor?: string;
 }
 
 export interface IChart extends Document {
     _id: mongoose.Types.ObjectId;
     name: string;
-    type: 'line' | 'bar' | 'area' | 'pie' | 'radar' | 'scatter' | 'heatmap' | 'donut' | 'stackedBar' | 'horizontalBar' | 'composed' | 'funnel';
+    type: 'line' | 'bar' | 'area' | 'pie' | 'radar' | 'scatter' | 'heatmap' | 'donut' | 'stackedBar' | 'horizontalBar' | 'composed' | 'funnel' | 'card';
     dataSource: IDataSource;
     style: IChartStyle;
     ownerId: mongoose.Types.ObjectId;
@@ -44,20 +84,47 @@ export interface IChart extends Document {
     updatedAt: Date;
 }
 
+const FilterSchema = new Schema({
+    field: { type: String, required: true },
+    operator: { 
+        type: String, 
+        enum: ['=', '!=', '>', '<', '>=', '<=', 'like', 'in'],
+        required: true 
+    },
+    value: { type: Schema.Types.Mixed, required: true },
+}, { _id: false });
+
 const DataSourceSchema = new Schema({
     table: { type: String, required: true },
-    xAxis: { type: String, required: true },
+    xAxis: { type: String },
     yAxis: [{ type: String, required: true }],
     aggregation: {
         type: String,
         enum: ['sum', 'avg', 'count', 'min', 'max'],
         default: 'sum'
     },
-    filters: [{ type: Schema.Types.Mixed }],
-    groupBy: { type: String },
+    filters: [FilterSchema],
+    groupBy: { type: Schema.Types.Mixed }, // Can be string or array
     orderBy: { type: String },
+    orderDirection: { type: String, enum: ['asc', 'desc'] },
     limit: { type: Number, default: 50 },
-}, { _id: false });
+    // Query mode
+    queryMode: { type: String, enum: ['simple', 'custom', 'import'], default: 'simple' },
+    customQuery: { type: String },
+    // Date columns
+    dateColumn: { type: String },
+    startDateColumn: { type: String },
+    endDateColumn: { type: String },
+    // Import mode data
+    importedData: [{ type: Schema.Types.Mixed }],
+    importedFileName: { type: String },
+    // Drill-down
+    drillDownLabelField: { type: String },
+    // Connection
+    connectionId: { type: String },
+    // Resolution
+    resolution: { type: String, enum: ['year', 'month', 'day'] },
+}, { _id: false, strict: false }); // Allow additional fields
 
 const ChartStyleSchema = new Schema({
     colors: [{ type: String }],
@@ -66,19 +133,36 @@ const ChartStyleSchema = new Schema({
     showGrid: { type: Boolean, default: true },
     showTooltip: { type: Boolean, default: true },
     showDataLabels: { type: Boolean },
-    dataLabelPosition: { type: String, enum: ['inside', 'outside', 'center'] },
+    dataLabelPosition: { type: String, enum: ['inside', 'outside', 'center', 'top', 'bottom', 'left', 'right'] },
+    dataLabelFormat: { type: String }, // Allow any format string
+    dataLabelColor: { type: String },
+    dataLabelFontSize: { type: Number },
     title: { type: String },
     titleFontSize: { type: Number },
     titleColor: { type: String },
     xAxisLabel: { type: String },
     yAxisLabel: { type: String },
+    xAxisExclude: [{ type: String }],
     stacked: { type: Boolean },
     horizontal: { type: Boolean },
     innerRadius: { type: Number },
     animation: { type: Boolean, default: true },
     gradientFill: { type: Boolean },
     borderRadius: { type: Number },
-}, { _id: false });
+    // Tooltip
+    tooltipTheme: { type: String }, // Allow any theme string
+    // Composed chart
+    composedFieldTypes: { type: Schema.Types.Mixed },
+    // Field customization
+    yAxisFieldLabels: { type: Schema.Types.Mixed },
+    yAxisFieldColors: { type: Schema.Types.Mixed },
+    // Card specific
+    cardFontSize: { type: Number },
+    cardColor: { type: String },
+    cardIcon: { type: String },
+    showCardIcon: { type: Boolean },
+    cardBackgroundColor: { type: String },
+}, { _id: false, strict: false }); // Allow additional fields
 
 const ChartSchema = new Schema<IChart>(
     {
@@ -90,7 +174,7 @@ const ChartSchema = new Schema<IChart>(
         },
         type: {
             type: String,
-            enum: ['line', 'bar', 'area', 'pie', 'radar', 'scatter', 'heatmap', 'donut', 'stackedBar', 'horizontalBar', 'composed', 'funnel'],
+            enum: ['line', 'bar', 'area', 'pie', 'radar', 'scatter', 'heatmap', 'donut', 'stackedBar', 'horizontalBar', 'composed', 'funnel', 'card'],
             required: true,
         },
         dataSource: {
@@ -99,7 +183,7 @@ const ChartSchema = new Schema<IChart>(
         },
         style: {
             type: ChartStyleSchema,
-            required: true,
+            default: {},
         },
         ownerId: {
             type: Schema.Types.ObjectId,
@@ -114,11 +198,17 @@ const ChartSchema = new Schema<IChart>(
     },
     {
         timestamps: true,
+        strict: false, // Allow additional fields at document level
     }
 );
 
 ChartSchema.index({ ownerId: 1, createdAt: -1 });
 ChartSchema.index({ name: 'text' });
+
+// Force model refresh in development to handle schema changes
+if (process.env.NODE_ENV !== 'production' && mongoose.models.Chart) {
+    delete mongoose.models.Chart;
+}
 
 const Chart: Model<IChart> = mongoose.models.Chart || mongoose.model<IChart>('Chart', ChartSchema);
 

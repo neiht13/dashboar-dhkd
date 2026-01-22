@@ -18,13 +18,15 @@ import {
     User,
     ChevronLeft,
     ChevronRight,
-    PieChart,
-    LineChart
+    X,
+    Users,
+    Bell,
+    History,
+    Shield,
 } from "lucide-react";
 import {
     Tooltip,
     TooltipContent,
-    TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
@@ -63,15 +65,44 @@ const bottomNavItems: NavItem[] = [
     {
         title: "Quản lý Database",
         href: "/settings/databases",
+        icon: <Database className="h-5 w-5" />,
+    },
+    {
+        title: "Nhóm làm việc",
+        href: "/teams",
+        icon: <Users className="h-5 w-5" />,
+    },
+    {
+        title: "Cảnh báo",
+        href: "/alerts",
+        icon: <Bell className="h-5 w-5" />,
+    },
+    {
+        title: "Nhật ký hoạt động",
+        href: "/activity",
+        icon: <History className="h-5 w-5" />,
+    },
+    {
+        title: "Kiểm toán",
+        href: "/settings/audit",
+        icon: <Shield className="h-5 w-5" />,
+    },
+    {
+        title: "Cài đặt",
+        href: "/settings",
         icon: <Settings className="h-5 w-5" />,
     },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+    onClose?: () => void;
+}
+
+export function Sidebar({ onClose }: SidebarProps) {
     const pathname = usePathname();
     const router = useRouter();
     const { user, isAuthenticated, logout, checkAuth } = useAuthStore();
-    const { isSidebarCollapsed, toggleSidebar, setSidebarCollapsed } = useLayoutStore();
+    const { isSidebarCollapsed, toggleSidebar } = useLayoutStore();
     const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
@@ -84,24 +115,29 @@ export function Sidebar() {
         router.push("/login");
     };
 
+    const handleNavClick = () => {
+        // Close mobile sidebar on navigation
+        onClose?.();
+    };
+
     if (!mounted) {
-        return <div className="w-[70px] bg-white h-screen border-r border-[#E2E8F0]" />;
+        return <div className="w-[70px] bg-white dark:bg-gray-900 h-screen border-r border-[#E2E8F0] dark:border-gray-800" />;
     }
 
     const NavItemContent = ({ item, isActive }: { item: NavItem; isActive: boolean }) => (
         <div
             className={cn(
-                "flex items-center gap-3 px-3 py-2.5 transition-all duration-200 group relative",
+                "flex items-center gap-3 px-3 py-2.5 transition-all duration-200 group relative rounded-lg",
                 isActive
-                    ? "bg-[#0052CC]/10 text-[#0052CC]"
-                    : "text-[#64748B] hover:bg-[#F1F5F9] hover:text-[#0F172A]",
+                    ? "bg-[#0052CC]/10 dark:bg-[#0052CC]/20 text-[#0052CC]"
+                    : "text-[#64748B] dark:text-gray-400 hover:bg-[#F1F5F9] dark:hover:bg-gray-800 hover:text-[#0F172A] dark:hover:text-white",
                 isSidebarCollapsed ? "justify-center px-2" : "",
                 "mx-2"
             )}
         >
             <div className={cn(
                 "transition-colors duration-200",
-                isActive ? "text-[#0052CC]" : "text-[#64748B] group-hover:text-[#0F172A]"
+                isActive ? "text-[#0052CC]" : "text-[#64748B] dark:text-gray-400 group-hover:text-[#0F172A] dark:group-hover:text-white"
             )}>
                 {item.icon}
             </div>
@@ -113,7 +149,7 @@ export function Sidebar() {
             )}
 
             {isActive && !isSidebarCollapsed && (
-                <div className="absolute right-0 h-full w-1 bg-[#0052CC] top-0" />
+                <div className="absolute right-0 h-full w-1 bg-[#0052CC] top-0 rounded-l" />
             )}
         </div>
     );
@@ -121,20 +157,25 @@ export function Sidebar() {
     // Calculate active item based on longest matching prefix
     const allNavItems = [...mainNavItems, ...bottomNavItems];
     const activeItem = allNavItems
-        .filter(item => pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href)))
+        .filter(item => {
+            // Special case: "Tổng quan" should be active on "/" or "/dashboard"
+            if (item.href === "/") return pathname === "/" || pathname === "/dashboard" || pathname.startsWith("/dashboard/");
+            // Prefix match for other paths
+            return pathname === item.href || pathname.startsWith(item.href + "/");
+        })
         .sort((a, b) => b.href.length - a.href.length)[0];
 
     return (
         <aside
             className={cn(
-                "flex-shrink-0 bg-white border-r border-[#E2E8F0] flex flex-col justify-between h-screen sticky top-0 transition-all duration-300 z-50",
+                "flex-shrink-0 bg-white dark:bg-gray-900 border-r border-[#E2E8F0] dark:border-gray-800 flex flex-col justify-between h-screen sticky top-0 transition-all duration-300 z-50",
                 isSidebarCollapsed ? "w-[80px]" : "w-[260px]"
             )}
         >
             <div className="flex flex-col h-full">
                 {/* Logo Header */}
                 <div className={cn(
-                    "h-[70px] flex items-center border-b border-[#E2E8F0/50]",
+                    "h-[70px] flex items-center border-b border-[#E2E8F0]/50 dark:border-gray-800",
                     isSidebarCollapsed ? "justify-center px-0" : "px-6 justify-between"
                 )}>
                     <div className="flex items-center gap-3">
@@ -144,29 +185,44 @@ export function Sidebar() {
                             >
                                 <Activity className="h-5 w-5" />
                             </div>
-                            <div className="absolute -bottom-1 -right-1 size-3 bg-green-500 border-2 border-white rounded-full"></div>
+                            <div className="absolute -bottom-1 -right-1 size-3 bg-green-500 border-2 border-white dark:border-gray-900 rounded-full"></div>
                         </div>
 
                         {!isSidebarCollapsed && (
                             <div className="flex flex-col">
-                                <h1 className="text-lg font-bold tracking-tight text-[#0F172A] leading-none">
+                                <h1 className="text-lg font-bold tracking-tight text-[#0F172A] dark:text-white leading-none">
                                     VNPT BI
                                 </h1>
-                                <span className="text-[10px] text-[#64748B] font-medium tracking-wider mt-0.5">ANALYTICS</span>
+                                <span className="text-[10px] text-[#64748B] dark:text-gray-400 font-medium tracking-wider mt-0.5">ANALYTICS</span>
                             </div>
                         )}
                     </div>
 
-                    {!isSidebarCollapsed && (
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={toggleSidebar}
-                            className="h-6 w-6 rounded-full bg-[#F1F5F9] text-[#64748B] hover:bg-[#E2E8F0] hover:text-[#0F172A]"
-                        >
-                            <ChevronLeft className="h-3 w-3" />
-                        </Button>
-                    )}
+                    <div className="flex items-center gap-2">
+                        {/* Mobile close button */}
+                        {onClose && !isSidebarCollapsed && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={onClose}
+                                className="lg:hidden h-8 w-8 rounded-full bg-[#F1F5F9] dark:bg-gray-800 text-[#64748B] hover:bg-[#E2E8F0] dark:hover:bg-gray-700 hover:text-[#0F172A] dark:hover:text-white"
+                            >
+                                <X className="h-4 w-4" />
+                            </Button>
+                        )}
+
+                        {/* Collapse button - desktop only */}
+                        {!isSidebarCollapsed && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={toggleSidebar}
+                                className="hidden lg:flex h-6 w-6 rounded-full bg-[#F1F5F9] dark:bg-gray-800 text-[#64748B] hover:bg-[#E2E8F0] dark:hover:bg-gray-700 hover:text-[#0F172A] dark:hover:text-white"
+                            >
+                                <ChevronLeft className="h-3 w-3" />
+                            </Button>
+                        )}
+                    </div>
                 </div>
 
                 {/* Navigation */}
@@ -174,7 +230,7 @@ export function Sidebar() {
                     {/* Main Section */}
                     <div className="px-0">
                         {!isSidebarCollapsed && (
-                            <h3 className="px-6 text-[11px] font-bold text-[#94A3B8] uppercase tracking-wider mb-2">
+                            <h3 className="px-6 text-[11px] font-bold text-[#94A3B8] dark:text-gray-500 uppercase tracking-wider mb-2">
                                 Menu chính
                             </h3>
                         )}
@@ -184,8 +240,8 @@ export function Sidebar() {
 
                                 return isSidebarCollapsed ? (
                                     <Tooltip key={item.href}>
-                                        <TooltipTrigger>
-                                            <Link href={item.href}>
+                                        <TooltipTrigger asChild>
+                                            <Link href={item.href} onClick={handleNavClick}>
                                                 <NavItemContent item={item} isActive={isActive} />
                                             </Link>
                                         </TooltipTrigger>
@@ -194,7 +250,7 @@ export function Sidebar() {
                                         </TooltipContent>
                                     </Tooltip>
                                 ) : (
-                                    <Link key={item.href} href={item.href}>
+                                    <Link key={item.href} href={item.href} onClick={handleNavClick}>
                                         <NavItemContent item={item} isActive={isActive} />
                                     </Link>
                                 );
@@ -206,9 +262,10 @@ export function Sidebar() {
                     <div className={cn("px-4", isSidebarCollapsed ? "px-2" : "")}>
                         {isSidebarCollapsed ? (
                             <Tooltip>
-                                <TooltipTrigger>
+                                <TooltipTrigger asChild>
                                     <Link
                                         href="/builder/new"
+                                        onClick={handleNavClick}
                                         className="flex items-center justify-center p-3 rounded-xl bg-[#0052CC] text-white hover:bg-[#0043A4] transition-all shadow-md shadow-blue-500/20"
                                     >
                                         <PlusCircle className="h-5 w-5" />
@@ -221,6 +278,7 @@ export function Sidebar() {
                         ) : (
                             <Link
                                 href="/builder/new"
+                                onClick={handleNavClick}
                                 className="flex items-center gap-3 p-3 rounded-xl bg-gradient-to-r from-[#0052CC] to-[#0043A4] text-white hover:shadow-lg hover:shadow-blue-500/25 transition-all group overflow-hidden relative"
                             >
                                 <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />

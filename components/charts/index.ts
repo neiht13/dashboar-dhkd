@@ -1,29 +1,42 @@
-// Chart Components Index
-// Export all chart components for easy importing
+/**
+ * Charts Module - Export all chart components and utilities
+ */
 
-// Dynamic chart (main chart for dashboard)
+// Main Dynamic Chart Component
 export { DynamicChart } from './DynamicChart';
 
-// Chart style types for the dashboard builder
-// Note: Glow, Hatched, and Highlighted effects are now built-in to DynamicChart
-// for line, bar, and area charts respectively
-export const CHART_STYLES = {
-    default: {
-        label: "Mặc định",
-        description: "Biểu đồ cơ bản",
-    },
-    glowing: {
-        label: "Phát sáng",
-        description: "Đường có hiệu ứng glow",
-    },
-    hatched: {
-        label: "Kẻ sọc",
-        description: "Vùng với pattern kẻ sọc động",
-    },
-    highlighted: {
-        label: "Nổi bật",
-        description: "Thanh nổi bật khi hover",
-    },
-} as const;
+// Individual Chart Type Components
+export {
+    LineChartComponent,
+    BarChartComponent,
+    AreaChartComponent,
+    PieChartComponent,
+    CardChartComponent,
+    RadarChartComponent,
+    ComposedChartComponent,
+    FunnelChartComponent,
+    ScatterChartComponent,
+} from './types';
 
-export type ChartStyleType = keyof typeof CHART_STYLES;
+// Map Chart
+export { MapChart } from './MapChart';
+
+// Stat Card
+export { StatCard } from './StatCard';
+
+// Shared Components
+export { DarkTooltip, LightTooltip, getTooltipComponent } from './shared/ChartTooltip';
+export { ChartLegend, createLegendRenderer } from './shared/ChartLegend';
+export { ChartDataLabel, createDataLabelRenderer } from './shared/ChartDataLabel';
+
+// Utilities
+export {
+    formatDataLabel,
+    getFieldLabel,
+    getFieldColor,
+    defaultAnimationConfig,
+    lineAnimationConfig,
+    buildLegendColorMap,
+    filterDataByXAxisExclude,
+    extractStyleProps,
+} from './utils/chart-utils';

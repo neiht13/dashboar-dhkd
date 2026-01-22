@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import {
     LineChart,
     Line,
@@ -10,6 +10,7 @@ import {
     Area,
     PieChart,
     Pie,
+    Sector,
     Cell,
     RadarChart,
     Radar,
@@ -30,16 +31,29 @@ import {
     ResponsiveContainer,
     Label,
 } from "recharts";
-import { icons } from "lucide-react";
-import type { ChartConfig } from "@/types";
+import * as icons from "lucide-react";
+import type { ChartConfig, Filter } from "@/types";
 import { getChartColor } from "@/lib/utils";
 import { MapChart } from "./MapChart";
+import { HexagonStat } from "./HexagonStat";
+import { StatCard } from "./StatCard";
+import { FilterBuilder } from "@/components/ui/FilterBuilder";
+import type { StatCardMetric, Filter } from "@/types";
 
 interface DynamicChartProps {
     config: ChartConfig;
     data: Record<string, unknown>[];
     width?: number | string;
     height?: number | string;
+    // Drill-down & Cross-filter support
+    onDataPointClick?: (data: Record<string, unknown>, field?: string) => void;
+    enableDrillDown?: boolean;
+    onDrillDown?: (filters: Array<{ field: string; operator: string; value: string | number }>) => Promise<any>;
+    enableCrossFilter?: boolean;
+    chartId?: string;
+    // Filter support
+    enableFilter?: boolean;
+    onFilterChange?: (filters: any[]) => void;
 }
 
 // Vietnamese labels for legend and tooltip
@@ -145,8 +159,52 @@ const CustomLegend = ({
     );
 };
 
-export function DynamicChart({ config, data, width = "100%", height = "100%" }: DynamicChartProps) {
+export function DynamicChart({
+    config,
+    data,
+    width = "100%",
+    height = "100%",
+    onDataPointClick,
+    enableDrillDown = false,
+    enableCrossFilter = false,
+    chartId,
+    enableFilter = false,
+    onFilterChange,
+}: DynamicChartProps) {
     const { type, dataSource, style } = config;
+
+    // Filter state
+    const [chartFilters, setChartFilters] = useState<Filter[]>([]);
+
+    // Handle chart element click for drill-down/cross-filter
+    const handleChartClick = (chartData: Record<string, unknown> | null, field?: string) => {
+        if (!chartData) return;
+        if (onDataPointClick) {
+            onDataPointClick(chartData, field || dataSource?.xAxis);
+        }
+    };
+
+    // Handle filter changes
+    const handleFilterChange = useCallback((filters: Filter[]) => {
+        setChartFilters(filters);
+        if (onFilterChange) {
+            onFilterChange(filters);
+        }
+    }, [onFilterChange]);
+
+    // Get available fields for filtering
+    const availableFields = React.useMemo(() => {
+        if (!data || data.length === 0) return [];
+        return Object.keys(data[0]).filter(field =>
+            data.some(item => item[field] !== null && item[field] !== undefined)
+        );
+    }, [data]);
+
+
+    // Cursor style when drill-down or cross-filter is enabled
+    const clickableCursor = (enableDrillDown || enableCrossFilter || onDataPointClick)
+        ? { cursor: 'pointer' }
+        : {};
     const colors = style?.colors?.length ? style.colors : MODERN_COLORS;
     const showDataLabels = style?.showDataLabels ?? false;
     const dataLabelPosition = style?.dataLabelPosition || 'top';
@@ -167,10 +225,25 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
     const getFieldColor = (field: string, index: number): string =>
         yAxisFieldColors[field] || colors[index] || getChartColor(index);
 
-    // Filter data by xAxisExclude
+    // First filter by chart filters
+    const chartFilteredData = React.useMemo(() => {
+        if (chartFilters.length === 0) return data;
+
+        return data.filter(item => {
+            return chartFilters.every(filter => {
+                const fieldValue = item[filter.field];
+                const filterValue = filter.value;
+
+                // Simple equality filter for now
+                return String(fieldValue).toLowerCase().includes(String(filterValue).toLowerCase());
+            });
+        });
+    }, [data, chartFilters]);
+
+    // Then filter by xAxisExclude
     const filteredData = xAxisExclude.length > 0 && dataSource?.xAxis
-        ? data.filter(item => !xAxisExclude.includes(String(item[dataSource.xAxis])))
-        : data;
+        ? chartFilteredData.filter(item => !xAxisExclude.includes(String(item[dataSource.xAxis])))
+        : chartFilteredData;
 
     // Select tooltip component based on theme
     const TooltipComponent = tooltipTheme === 'light' ? CustomTooltipLight : CustomTooltip;
@@ -217,8 +290,6 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
         isAnimationActive: true,
         animationDuration: 2000,
         animationEasing: "ease-in-out" as const,
-        onAnimationStart: () => console.log('Animation start'),
-        onAnimationEnd: () => console.log('Animation end'),
     };
 
     // Custom data label with halo effect for better readability
@@ -283,57 +354,35 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
     const renderChart = () => {
         switch (type) {
             case "card":
-                const firstYAxis = dataSource?.yAxis?.[0];
-                const cardValue = filteredData.reduce((acc, curr) => {
-                    if (!firstYAxis) return acc;
-                    const val = Number(curr[firstYAxis]);
-                    return isNaN(val) ? acc : acc + val;
-                }, 0);
-
-                // Card Styles
-                const fontSizeMap = {
-                    sm: "text-2xl",
-                    md: "text-4xl",
-                    lg: "text-6xl",
-                    xl: "text-8xl"
-                };
-                const fontSizeClass = fontSizeMap[style?.cardFontSize || 'lg'] || "text-6xl";
-                const textColor = style?.cardColor || undefined;
-
-                // Icon
-                const IconComponent = style?.showCardIcon && style?.cardIcon && (icons as any)[style.cardIcon]
-                    ? (icons as any)[style.cardIcon]
-                    : null;
+            case "statCard":
+                // Unified card component - supports both simple and metric cards
+                const cardTitle = style?.title || (type === 'statCard' ? "Thống kê" : undefined);
+                const cardIcon = style?.cardIcon;
+                const cardMetrics = (config.dataSource as any)?.metrics || [];
+                const cardBackgroundColor = style?.cardBackgroundColor || "#ffffff";
+                const cardAccentColor = colors[0] || "#0066FF";
 
                 return (
-                    <div
-                        className="flex flex-col items-center justify-center h-full w-full rounded-lg transition-colors"
-                        style={{ backgroundColor: style?.cardBackgroundColor || 'transparent' }}
-                    >
-                        <div className="flex items-center gap-3 mb-2">
-                            {IconComponent && (
-                                <IconComponent
-                                    className={fontSizeClass}
-                                    style={{ width: '1em', height: '1em', color: textColor }} // match text size and color
-                                />
-                            )}
-                            <div
-                                className={`font-bold ${!textColor ? "bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600" : ""}`}
-                                style={{ color: textColor }}
-                            >
-                                <span className={fontSizeClass}>{formatDataLabel(cardValue)}</span>
-                            </div>
-                        </div>
-                        <div className="text-sm text-slate-500 font-medium uppercase tracking-wider">
-                            {firstYAxis ? getFieldLabel(firstYAxis) : "Giá trị"}
-                        </div>
-                    </div>
+                    <StatCard
+                        title={cardTitle || (type === 'statCard' ? "Thống kê" : undefined)}
+                        icon={cardIcon}
+                        metrics={cardMetrics.length > 0 ? cardMetrics : undefined}
+                        data={filteredData}
+                        dataSource={dataSource}
+                        backgroundColor={cardBackgroundColor}
+                        accentColor={cardAccentColor}
+                    />
                 );
 
             case "line":
                 return (
                     <ResponsiveContainer width="100%" height={height}>
-                        <LineChart data={filteredData} margin={{ top: 20, right: 20, bottom: 10, left: 10 }}>
+                        <LineChart
+                            data={filteredData}
+                            margin={{ top: 20, right: 20, bottom: 10, left: 10 }}
+                            onClick={(e) => e?.activePayload?.[0]?.payload && handleChartClick(e.activePayload[0].payload)}
+                            style={clickableCursor}
+                        >
                             <defs>
                                 {/* Glow filter for line effect */}
                                 <filter id="line-glow" x="-20%" y="-20%" width="140%" height="140%">
@@ -368,6 +417,7 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
                             </YAxis>
                             {style?.showTooltip && <Tooltip content={<TooltipComponent />} />}
                             {style?.showLegend && <Legend content={renderLegend()} verticalAlign={legendPosition as 'top' | 'bottom'} />}
+                            {/* Pass 1: Draw lines */}
                             {(dataSource?.yAxis || []).map((field, index) => (
                                 <Line
                                     key={field}
@@ -382,14 +432,27 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
                                     strokeLinecap="round"
                                     strokeLinejoin="round"
                                     {...lineAnimationProps}
+                                />
+                            ))}
+                            {/* Pass 2: Draw labels */}
+                            {showDataLabels && (dataSource?.yAxis || []).map((field, index) => (
+                                <Line
+                                    key={`label-${field}`}
+                                    type="monotone"
+                                    dataKey={field}
+                                    stroke="transparent"
+                                    strokeWidth={0}
+                                    dot={false}
+                                    activeDot={false}
+                                    isAnimationActive={false}
+                                    legendType="none"
+                                    tooltipType="none"
                                 >
-                                    {showDataLabels && (
-                                        <LabelList
-                                            dataKey={field}
-                                            position={dataLabelPosition}
-                                            content={renderCustomLabel}
-                                        />
-                                    )}
+                                    <LabelList
+                                        dataKey={field}
+                                        position={dataLabelPosition}
+                                        content={renderCustomLabel}
+                                    />
                                 </Line>
                             ))}
                         </LineChart>
@@ -399,7 +462,12 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
             case "bar":
                 return (
                     <ResponsiveContainer width="100%" height={height}>
-                        <BarChart data={filteredData} margin={{ top: 20, right: 20, bottom: 10, left: 10 }}>
+                        <BarChart
+                            data={filteredData}
+                            margin={{ top: 20, right: 20, bottom: 10, left: 10 }}
+                            onClick={(e) => e?.activePayload?.[0]?.payload && handleChartClick(e.activePayload[0].payload)}
+                            style={clickableCursor}
+                        >
                             <defs>
                                 {(dataSource?.yAxis || []).map((field, index) => (
                                     <linearGradient key={field} id={`bar-gradient-${index}`} x1="0" y1="0" x2="0" y2="1">
@@ -429,6 +497,7 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
                             </YAxis>
                             {style?.showTooltip && <Tooltip content={<TooltipComponent />} cursor={{ fill: 'rgba(0, 102, 255, 0.05)' }} />}
                             {style?.showLegend && <Legend content={renderLegend()} verticalAlign={legendPosition as 'top' | 'bottom'} />}
+                            {/* Pass 1: Draw bars */}
                             {(dataSource?.yAxis || []).map((field, index) => (
                                 <Bar
                                     key={field}
@@ -437,14 +506,23 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
                                     fill={`url(#bar-gradient-${index})`}
                                     radius={[4, 4, 0, 0]}
                                     {...animationProps}
+                                />
+                            ))}
+                            {/* Pass 2: Draw labels */}
+                            {showDataLabels && (dataSource?.yAxis || []).map((field, index) => (
+                                <Bar
+                                    key={`label-${field}`}
+                                    dataKey={field}
+                                    fill="transparent"
+                                    isAnimationActive={false}
+                                    legendType="none"
+                                    tooltipType="none"
                                 >
-                                    {showDataLabels && (
-                                        <LabelList
-                                            dataKey={field}
-                                            position={dataLabelPosition}
-                                            content={renderCustomLabel}
-                                        />
-                                    )}
+                                    <LabelList
+                                        dataKey={field}
+                                        position={dataLabelPosition}
+                                        content={renderCustomLabel}
+                                    />
                                 </Bar>
                             ))}
                         </BarChart>
@@ -454,7 +532,12 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
             case "stackedBar":
                 return (
                     <ResponsiveContainer width="100%" height={height}>
-                        <BarChart data={filteredData} margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
+                        <BarChart
+                            data={filteredData}
+                            margin={{ top: 10, right: 10, bottom: 10, left: 10 }}
+                            onClick={(e) => e?.activePayload?.[0]?.payload && handleChartClick(e.activePayload[0].payload)}
+                            style={clickableCursor}
+                        >
                             <defs>
                                 {(dataSource?.yAxis || []).map((field, index) => (
                                     <linearGradient key={field} id={`stacked-gradient-${index}`} x1="0" y1="0" x2="0" y2="1">
@@ -484,6 +567,7 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
                             </YAxis>
                             {style?.showTooltip && <Tooltip content={<TooltipComponent />} cursor={{ fill: 'rgba(0, 102, 255, 0.05)' }} />}
                             {style?.showLegend && <Legend content={renderLegend()} verticalAlign={legendPosition as 'top' | 'bottom'} />}
+                            {/* Pass 1: Draw stacked bars with labels (must stay in same pass for stack alignment) */}
                             {dataSource?.yAxis.map((field, index) => (
                                 <Bar
                                     key={field}
@@ -493,7 +577,16 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
                                     fill={`url(#stacked-gradient-${index})`}
                                     {...animationProps}
                                 >
-                                    {showDataLabels && <LabelList dataKey={field} position="center" fill="#fff" fontSize={10} fontWeight={600} formatter={formatDataLabel} />}
+                                    {showDataLabels && (
+                                        <LabelList
+                                            dataKey={field}
+                                            position="center"
+                                            fill="#fff"
+                                            fontSize={10}
+                                            fontWeight={600}
+                                            formatter={formatDataLabel}
+                                        />
+                                    )}
                                 </Bar>
                             ))}
                         </BarChart>
@@ -503,7 +596,13 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
             case "horizontalBar":
                 return (
                     <ResponsiveContainer width="100%" height={height}>
-                        <BarChart data={filteredData} layout="vertical" margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
+                        <BarChart
+                            data={filteredData}
+                            layout="vertical"
+                            margin={{ top: 10, right: 10, bottom: 10, left: 10 }}
+                            onClick={(e) => e?.activePayload?.[0]?.payload && handleChartClick(e.activePayload[0].payload)}
+                            style={clickableCursor}
+                        >
                             <defs>
                                 {(dataSource?.yAxis || []).map((field, index) => (
                                     <linearGradient key={field} id={`hbar-gradient-${index}`} x1="0" y1="0" x2="1" y2="0">
@@ -530,6 +629,7 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
                             />
                             {style?.showTooltip && <Tooltip content={<TooltipComponent />} cursor={{ fill: 'rgba(0, 102, 255, 0.05)' }} />}
                             {style?.showLegend && <Legend content={renderLegend()} verticalAlign={legendPosition as 'top' | 'bottom'} />}
+                            {/* Pass 1: Draw horizontal bars */}
                             {dataSource?.yAxis.map((field, index) => (
                                 <Bar
                                     key={field}
@@ -538,8 +638,19 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
                                     fill={`url(#hbar-gradient-${index})`}
                                     radius={[0, 2, 2, 0]}
                                     {...animationProps}
+                                />
+                            ))}
+                            {/* Pass 2: Draw labels */}
+                            {showDataLabels && dataSource?.yAxis.map((field, index) => (
+                                <Bar
+                                    key={`label-${field}`}
+                                    dataKey={field}
+                                    fill="transparent"
+                                    isAnimationActive={false}
+                                    legendType="none"
+                                    tooltipType="none"
                                 >
-                                    {showDataLabels && <LabelList dataKey={field} position="right" fontSize={10} fill="#64748B" formatter={formatDataLabel} />}
+                                    <LabelList dataKey={field} position="right" fontSize={10} fill="#64748B" formatter={formatDataLabel} />
                                 </Bar>
                             ))}
                         </BarChart>
@@ -549,12 +660,18 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
             case "area":
                 return (
                     <ResponsiveContainer width="100%" height={height}>
-                        <AreaChart data={filteredData} margin={{ top: 20, right: 20, bottom: 10, left: 10 }}>
+                        <AreaChart
+                            data={filteredData}
+                            margin={{ top: 20, right: 20, bottom: 10, left: 10 }}
+                            onClick={(e) => e?.activePayload?.[0]?.payload && handleChartClick(e.activePayload[0].payload)}
+                            style={clickableCursor}
+                        >
                             <defs>
                                 {(dataSource?.yAxis || []).map((field, index) => {
                                     const color = getFieldColor(field, index);
                                     return (
                                         <React.Fragment key={field}>
+                                            {/* Gradient for default state */}
                                             <linearGradient
                                                 id={`area-gradient-${index}`}
                                                 x1="0"
@@ -562,44 +679,43 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
                                                 x2="0"
                                                 y2="1"
                                             >
-                                                <stop
-                                                    offset="5%"
-                                                    stopColor={color}
-                                                    stopOpacity={0.4}
-                                                />
-                                                <stop
-                                                    offset="95%"
-                                                    stopColor={color}
-                                                    stopOpacity={0}
-                                                />
+                                                <stop offset="5%" stopColor={color} stopOpacity={0.4} />
+                                                <stop offset="95%" stopColor={color} stopOpacity={0.05} />
                                             </linearGradient>
+                                            {/* Animated hatch pattern for hover state */}
                                             <pattern
                                                 id={`area-hatch-${index}`}
                                                 x="0"
                                                 y="0"
-                                                width="6.81"
-                                                height="6.81"
+                                                width="8"
+                                                height="8"
                                                 patternUnits="userSpaceOnUse"
                                                 patternTransform="rotate(-45)"
-                                                overflow="visible"
                                             >
-                                                <g overflow="visible" style={{ willChange: 'transform' }}>
+                                                <g className="area-hatch-animation">
                                                     <animateTransform
                                                         attributeName="transform"
                                                         type="translate"
                                                         from="0 0"
-                                                        to="6 0"
-                                                        dur="1s"
+                                                        to="8 0"
+                                                        dur="0.5s"
                                                         repeatCount="indefinite"
                                                     />
-                                                    <rect width="10" height="10" opacity={0.05} fill={color} />
-                                                    <rect width="1" height="10" fill={color} />
+                                                    <rect width="12" height="12" fill={color} opacity="0.15" />
+                                                    <rect width="2" height="12" fill={color} opacity="0.5" />
                                                 </g>
                                             </pattern>
                                         </React.Fragment>
                                     );
                                 })}
                             </defs>
+                            <style>
+                                {`
+                                    .recharts-area-area:hover {
+                                        fill: url(#area-hatch-0) !important;
+                                    }
+                                `}
+                            </style>
                             {style?.showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />}
                             <XAxis
                                 dataKey={dataSource?.xAxis || 'name'}
@@ -619,169 +735,200 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
                             >
                                 {style?.yAxisLabel && <Label value={style.yAxisLabel} angle={-90} position="insideLeft" style={{ textAnchor: 'middle', fill: '#64748B', fontSize: 12 }} />}
                             </YAxis>
-                            {style?.showTooltip && <Tooltip content={<TooltipComponent />} />}
+                            {style?.showTooltip && <Tooltip content={<TooltipComponent />} cursor={{ stroke: '#94A3B8', strokeWidth: 1, strokeDasharray: '4 4' }} />}
                             {style?.showLegend && <Legend content={renderLegend()} verticalAlign={legendPosition as 'top' | 'bottom'} />}
+                            {/* Pass 1: Draw areas */}
                             {(dataSource?.yAxis || []).map((field, index) => (
                                 <Area
                                     key={field}
-                                    type="natural"
+                                    type="monotone"
                                     dataKey={field}
                                     name={field}
                                     stroke={getFieldColor(field, index)}
-                                    strokeWidth={2}
-                                    fill={`url(#area-hatch-${index})`}
-                                    fillOpacity={0.8}
+                                    strokeWidth={3}
+                                    fill={`url(#area-gradient-${index})`}
+                                    fillOpacity={1}
+                                    activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff' }}
+                                    className="transition-all duration-300 hover:fill-[url(#area-hatch-0)]"
                                     {...animationProps}
+                                />
+                            ))}
+                            {/* Pass 2: Draw labels */}
+                            {showDataLabels && (dataSource?.yAxis || []).map((field, index) => (
+                                <Area
+                                    key={`label-${field}`}
+                                    type="monotone"
+                                    dataKey={field}
+                                    stroke="transparent"
+                                    fill="transparent"
+                                    isAnimationActive={false}
+                                    legendType="none"
+                                    tooltipType="none"
                                 >
-                                    {showDataLabels && (
-                                        <LabelList
-                                            dataKey={field}
-                                            position={dataLabelPosition}
-                                            fontSize={dataLabelFontSize}
-                                            fill={dataLabelColor}
-                                            fontWeight={500}
-                                            formatter={formatDataLabel}
-                                        />
-                                    )}
+                                    <LabelList
+                                        dataKey={field}
+                                        position="top"
+                                        offset={10}
+                                        fontSize={10}
+                                        fill={dataLabelColor}
+                                        fontWeight={600}
+                                        formatter={formatDataLabel}
+                                    />
                                 </Area>
                             ))}
                         </AreaChart>
                     </ResponsiveContainer>
                 );
 
-            case "sizedPie":
+            case "sizedPie": // Legacy: now accessed via pieVariant: 'sized'
+            case "donut":
             case "pie":
-                if (type === 'sizedPie' || style?.pieVariant === 'sized') {
-                    // Sized Pie Chart: sort by value and use concentric rings with increasing radius
-                    const yAxisKey = dataSource?.yAxis?.[0] || '';
-                    const sortedSizedData = [...filteredData]
-                        .map((item: any, idx) => ({ ...item, __originalIndex: idx }))
-                        .sort((a: any, b: any) => (Number(a[yAxisKey]) || 0) - (Number(b[yAxisKey]) || 0));
+                // Consolidated Pie/Donut/Sized logic (sizedPie accessed via pieVariant: 'sized')
+                const isSized = type === 'sizedPie' || style?.pieVariant === 'sized';
+                const isDonut = type === 'donut' || style?.pieVariant === 'donut';
+                const yAxisKey = dataSource?.yAxis?.[0] || 'value';
+                const xAxisKey = dataSource?.xAxis || 'name';
 
-                    const numericWidth = typeof width === 'number' ? width : 500;
-                    const numericHeight = typeof height === 'number' ? height : 300;
-                    const BASE_RADIUS = Math.min(numericWidth / 2, numericHeight / 2) * 0.3;
-                    const MAX_RADIUS = Math.min(numericWidth / 2, numericHeight / 2) * 0.95;
-                    const totalValue = sortedSizedData.reduce((acc, curr) => acc + (Number(curr[yAxisKey]) || 0), 0);
-                    const maxValue = Math.max(...sortedSizedData.map(d => Number(d[yAxisKey]) || 0));
+                // Sort for sized pie to make it look organized
+                const processedPieData = isSized
+                    ? [...filteredData].sort((a: any, b: any) => (Number(a[yAxisKey]) || 0) - (Number(b[yAxisKey]) || 0))
+                    : filteredData;
 
-                    let currentAngle = 0;
+                // Value calculation for sized radius
+                const maxValue = isSized ? Math.max(...processedPieData.map((d: any) => Number(d[yAxisKey]) || 0)) : 0;
+                const totalValue = processedPieData.reduce((acc: number, curr: any) => acc + (Number(curr[yAxisKey]) || 0), 0);
+
+                // Sized Pie radius calculations
+                const numericWidth = typeof width === 'number' ? width : 500;
+                const numericHeight = typeof height === 'number' ? height : 300;
+                const BASE_RADIUS = Math.min(numericWidth, numericHeight) * 0.30;
+                const MAX_RADIUS = Math.min(numericWidth, numericHeight) * 0.60;
+                const radiusRange = MAX_RADIUS - BASE_RADIUS;
+
+                // Custom label with connector line (always visible)
+                const renderPieLabelWithLine = (props: any) => {
+                    const { cx, cy, midAngle, outerRadius, value, name, fill } = props;
+                    const RADIAN = Math.PI / 180;
+
+                    // Calculate positions
+                    const sin = Math.sin(-midAngle * RADIAN);
+                    const cos = Math.cos(-midAngle * RADIAN);
+
+                    // Start point (on the pie edge)
+                    const sx = cx + outerRadius * cos;
+                    const sy = cy + outerRadius * sin;
+
+                    // Middle point (elbow)
+                    const mx = cx + (outerRadius + 20) * cos;
+                    const my = cy + (outerRadius + 20) * sin;
+
+                    // End point (horizontal extension)
+                    const ex = mx + (cos >= 0 ? 1 : -1) * 22;
+                    const ey = my;
+
+                    const textAnchor = cos >= 0 ? 'start' : 'end';
+                    const formattedValue = formatDataLabel(value);
+
+                    if (!value) return null;
 
                     return (
-                        <ResponsiveContainer width="100%" height={height}>
-                            <PieChart>
-                                {style?.showTooltip && <Tooltip content={<TooltipComponent />} />}
-                                {style?.showLegend && <Legend content={renderLegend()} verticalAlign={legendPosition as 'top' | 'bottom'} />}
-                                {sortedSizedData.map((entry, index) => {
+                        <g>
+                            {/* Connector line */}
+                            <path
+                                d={`M${sx},${sy}L${mx},${my}L${ex},${ey}`}
+                                stroke={fill || "#94A3B8"}
+                                fill="none"
+                                strokeWidth={1}
+                            />
+                            {/* Dot at the end */}
+                            <circle cx={ex} cy={ey} r={2} fill={fill || "#94A3B8"} />
+                            {/* Label text */}
+                            <text
+                                x={ex + (cos >= 0 ? 1 : -1) * 6}
+                                y={ey}
+                                textAnchor={textAnchor}
+                                fill={dataLabelColor || "#1E293B"}
+                                fontSize={10}
+                                fontWeight={500}
+                                dominantBaseline="central"
+                            >
+                                {`${name}: ${formattedValue}`}
+                            </text>
+                        </g>
+                    );
+                };
+
+                return (
+                    <ResponsiveContainer width="100%" height={height}>
+                        <PieChart style={clickableCursor}>
+                            {style?.showTooltip && <Tooltip content={<TooltipComponent />} />}
+                            {style?.showLegend && <Legend content={renderLegend()} verticalAlign={legendPosition as 'top' | 'bottom'} />}
+                            {isSized ? (
+                                // Sized Pie: Render each slice as a separate Pie component for unique radii
+                                (processedPieData.reduce((acc: any[], entry: any, index: number) => {
                                     const value = Number(entry[yAxisKey]) || 0;
                                     const percentage = totalValue ? value / totalValue : 0;
-                                    const startAngle = 90 - (currentAngle * 360);
-                                    const endAngle = 90 - ((currentAngle + percentage) * 360);
-                                    currentAngle += percentage;
+                                    const startAngle = 90 - (acc.length > 0 ? acc[acc.length - 1].nextAngle : 0) * 360;
+                                    const endAngle = 90 - ((acc.length > 0 ? acc[acc.length - 1].nextAngle : 0) + percentage) * 360;
+                                    const nextAngle = (acc.length > 0 ? acc[acc.length - 1].nextAngle : 0) + percentage;
 
-                                    // Clean up radius calculation to be value-based
-                                    const radiusRange = MAX_RADIUS - BASE_RADIUS;
                                     const valueRatio = maxValue ? value / maxValue : 0;
                                     const outerRadius = BASE_RADIUS + (valueRatio * radiusRange);
 
-                                    return (
-                                        <Pie
-                                            key={`sized-pie-${index}`}
-                                            dataKey={yAxisKey}
-                                            nameKey={dataSource?.xAxis || ''}
-                                            cx="50%"
-                                            cy="50%"
-                                            startAngle={startAngle}
-                                            endAngle={endAngle}
-                                            innerRadius={30}
-                                            outerRadius={outerRadius}
-                                            cornerRadius={4}
-                                            paddingAngle={0}
-                                            stroke="none"
-                                            data={[{ ...entry, fill: getFieldColor(String(entry.__originalIndex), entry.__originalIndex) }]}
-                                            {...animationProps}
-                                        >
-                                            <Cell
-                                                fill={getFieldColor(String(entry.__originalIndex), entry.__originalIndex)}
-                                                stroke="none"
+                                    // Pass 1: Visual Segment (provides Legend)
+                                    acc.push({
+                                        nextAngle,
+                                        component: (
+                                            <Pie
+                                                key={`sized-seg-${index}`}
+                                                data={[entry]}
+                                                dataKey={yAxisKey}
+                                                nameKey={xAxisKey}
+                                                cx="50%"
+                                                cy="50%"
+                                                startAngle={startAngle}
+                                                endAngle={endAngle}
+                                                innerRadius={isDonut ? 30 : 0}
+                                                outerRadius={outerRadius}
+                                                fill={getFieldColor(entry[xAxisKey] || String(index), index)}
+                                                stroke="#fff"
+                                                strokeWidth={2}
+                                                onClick={() => handleChartClick(entry)}
+                                                label={renderPieLabelWithLine}
+                                                labelLine={false}
+                                                {...animationProps}
                                             />
-                                            {showDataLabels && (
-                                                <LabelList
-                                                    dataKey={yAxisKey}
-                                                    position="outside"
-                                                    content={renderCustomLabel}
-                                                    stroke="none"
-                                                />
-                                            )}
-                                        </Pie>
-                                    );
-                                })}
-                            </PieChart>
-                        </ResponsiveContainer>
-                    );
-                }
+                                        )
+                                    });
 
-                return (
-                    <ResponsiveContainer width="100%" height={height}>
-                        <PieChart>
-                            {style?.showTooltip && <Tooltip content={<TooltipComponent />} />}
-                            {style?.showLegend && <Legend content={renderLegend()} verticalAlign={legendPosition as 'top' | 'bottom'} />}
-                            <Pie
-                                data={filteredData}
-                                cx="50%"
-                                cy="50%"
-                                innerRadius={0}
-                                outerRadius={80}
-                                dataKey={dataSource.yAxis[0]}
-                                nameKey={dataSource.xAxis}
-                                paddingAngle={2}
-                                {...animationProps}
-                            >
-                                {filteredData.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={getFieldColor(dataSource.xAxis, index)} strokeWidth={1} />
-                                ))}
-                                {showDataLabels && (
-                                    <LabelList
-                                        dataKey={dataSource.yAxis[0]}
-                                        position="outside"
-                                        content={renderCustomLabel}
-                                        stroke="none"
-                                    />
-                                )}
-                            </Pie>
-                        </PieChart>
-                    </ResponsiveContainer>
-                );
-
-            case "donut":
-                return (
-                    <ResponsiveContainer width="100%" height={height}>
-                        <PieChart>
-                            {style?.showTooltip && <Tooltip content={<TooltipComponent />} />}
-                            {style?.showLegend && <Legend content={renderLegend()} verticalAlign={legendPosition as 'top' | 'bottom'} />}
-                            <Pie
-                                data={filteredData}
-                                cx="50%"
-                                cy="50%"
-                                innerRadius={60}
-                                outerRadius={80}
-                                dataKey={dataSource.yAxis[0]}
-                                nameKey={dataSource.xAxis}
-                                paddingAngle={2}
-                                {...animationProps}
-                            >
-                                {filteredData.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={getFieldColor(dataSource.xAxis, index)} strokeWidth={1} />
-                                ))}
-                                {showDataLabels && (
-                                    <LabelList
-                                        dataKey={dataSource.yAxis[0]}
-                                        position="outside"
-                                        content={renderCustomLabel}
-                                        stroke="none"
-                                    />
-                                )}
-                            </Pie>
+                                    return acc;
+                                }, []).map(item => item.component))
+                            ) : (
+                                <Pie
+                                    data={processedPieData}
+                                    cx="50%"
+                                    cy="50%"
+                                    innerRadius={isDonut ? "55%" : 0}
+                                    outerRadius="75%"
+                                    dataKey={yAxisKey}
+                                    nameKey={xAxisKey}
+                                    paddingAngle={2}
+                                    onClick={(data) => data && handleChartClick(data.payload || data)}
+                                    label={renderPieLabelWithLine}
+                                    labelLine={false}
+                                    {...animationProps}
+                                >
+                                    {processedPieData.map((entry: any, index: number) => (
+                                        <Cell
+                                            key={`cell-${index}`}
+                                            fill={getFieldColor(entry[xAxisKey] || String(index), index)}
+                                            stroke="#fff"
+                                            strokeWidth={2}
+                                            style={{ outline: 'none' }}
+                                        />
+                                    ))}
+                                </Pie>
+                            )}
                         </PieChart>
                     </ResponsiveContainer>
                 );
@@ -792,7 +939,11 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
             case "radar":
                 return (
                     <ResponsiveContainer width="100%" height={height}>
-                        <RadarChart data={filteredData}>
+                        <RadarChart
+                            data={filteredData}
+                            onClick={(e) => e?.activePayload?.[0]?.payload && handleChartClick(e.activePayload[0].payload)}
+                            style={clickableCursor}
+                        >
                             <PolarGrid stroke="#E2E8F0" />
                             <PolarAngleAxis
                                 dataKey={dataSource.xAxis}
@@ -820,7 +971,11 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
             case "scatter":
                 return (
                     <ResponsiveContainer width="100%" height={height}>
-                        <ScatterChart margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
+                        <ScatterChart
+                            margin={{ top: 10, right: 10, bottom: 10, left: 10 }}
+                            onClick={(e) => e?.activePayload?.[0]?.payload && handleChartClick(e.activePayload[0].payload)}
+                            style={clickableCursor}
+                        >
                             {style?.showGrid && <CartesianGrid strokeDasharray="0" stroke="#E2E8F0" />}
                             <XAxis
                                 dataKey={dataSource.xAxis}
@@ -852,7 +1007,12 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
             case "composed":
                 return (
                     <ResponsiveContainer width="100%" height={height}>
-                        <ComposedChart data={filteredData} margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
+                        <ComposedChart
+                            data={filteredData}
+                            margin={{ top: 10, right: 10, bottom: 10, left: 10 }}
+                            onClick={(e) => e?.activePayload?.[0]?.payload && handleChartClick(e.activePayload[0].payload)}
+                            style={clickableCursor}
+                        >
                             <defs>
                                 {(dataSource?.yAxis || []).map((field, index) => (
                                     <linearGradient key={field} id={`composed-gradient-${index}`} x1="0" y1="0" x2="0" y2="1">
@@ -882,7 +1042,7 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
                             </YAxis>
                             {style?.showTooltip && <Tooltip content={<TooltipComponent />} cursor={{ fill: 'rgba(0, 102, 255, 0.05)' }} />}
                             {style?.showLegend && <Legend content={renderLegend()} verticalAlign={legendPosition as 'top' | 'bottom'} />}
-                            {/* Bars first to stay behind lines */}
+                            {/* Pass 1: Bars first to stay behind lines */}
                             {dataSource.yAxis
                                 .filter(field => (composedFieldTypes[field] || (dataSource.yAxis.indexOf(field) % 2 === 0 ? 'bar' : 'line')) === 'bar')
                                 .map((field, index) => {
@@ -895,19 +1055,11 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
                                             fill={`url(#composed-gradient-${originalIndex})`}
                                             radius={[4, 4, 0, 0]}
                                             {...animationProps}
-                                        >
-                                            {showDataLabels && (
-                                                <LabelList
-                                                    dataKey={field}
-                                                    position={dataLabelPosition}
-                                                    content={renderCustomLabel}
-                                                />
-                                            )}
-                                        </Bar>
+                                        />
                                     );
                                 })}
 
-                            {/* Lines second to stay on top */}
+                            {/* Pass 2: Lines second to stay on top of bars */}
                             {dataSource.yAxis
                                 .filter(field => (composedFieldTypes[field] || (dataSource.yAxis.indexOf(field) % 2 === 0 ? 'bar' : 'line')) !== 'bar')
                                 .map((field, index) => {
@@ -926,23 +1078,61 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
                                             strokeLinecap="round"
                                             strokeLinejoin="round"
                                             {...lineAnimationProps}
-                                        >
-                                            {showDataLabels && (
-                                                <LabelList
-                                                    dataKey={field}
-                                                    position={dataLabelPosition}
-                                                    content={renderCustomLabel}
-                                                />
-                                            )}
-                                        </Line>
+                                        />
                                     );
                                 })}
+
+                            {/* Pass 3: All Labels last to stay on top of everything */}
+                            {showDataLabels && dataSource.yAxis.map((field, index) => {
+                                const type = composedFieldTypes[field] || (dataSource.yAxis.indexOf(field) % 2 === 0 ? 'bar' : 'line');
+                                const originalIndex = dataSource.yAxis.indexOf(field);
+
+                                if (type === 'bar') {
+                                    return (
+                                        <Bar
+                                            key={`label-${field}`}
+                                            dataKey={field}
+                                            fill="transparent"
+                                            isAnimationActive={false}
+                                            legendType="none"
+                                            tooltipType="none"
+                                        >
+                                            <LabelList
+                                                dataKey={field}
+                                                position={dataLabelPosition}
+                                                content={renderCustomLabel}
+                                            />
+                                        </Bar>
+                                    );
+                                } else {
+                                    return (
+                                        <Line
+                                            key={`label-${field}`}
+                                            type="monotone"
+                                            dataKey={field}
+                                            stroke="transparent"
+                                            strokeWidth={0}
+                                            dot={false}
+                                            isAnimationActive={false}
+                                            legendType="none"
+                                            tooltipType="none"
+                                        >
+                                            <LabelList
+                                                dataKey={field}
+                                                position={dataLabelPosition}
+                                                content={renderCustomLabel}
+                                            />
+                                        </Line>
+                                    );
+                                }
+                            })}
                         </ComposedChart>
                     </ResponsiveContainer>
                 );
 
             case "funnel":
                 const funnelData = data.map((item, index) => ({
+                    ...item,
                     name: item[dataSource?.xAxis || 'name'] as string,
                     value: item[dataSource?.yAxis?.[0] || 'value'] as number,
                     fill: colors[index % colors.length] || getChartColor(index),
@@ -950,12 +1140,13 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
 
                 return (
                     <ResponsiveContainer width="100%" height={height}>
-                        <FunnelChart>
+                        <FunnelChart style={clickableCursor}>
                             {style?.showTooltip && <Tooltip content={<TooltipComponent />} />}
                             {style?.showLegend && <Legend content={renderLegend()} />}
                             <Funnel
                                 dataKey="value"
                                 data={funnelData}
+                                onClick={(data) => data && handleChartClick(data.payload || data)}
                                 {...animationProps}
                             >
                                 {showDataLabels && <LabelList position="center" fill="#fff" stroke="none" dataKey="name" fontSize={11} fontWeight={600} />}
@@ -965,6 +1156,58 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
                 );
 
 
+
+
+            case "hexagon":
+                // Get the first available numeric value from filteredData
+                const hexYField = dataSource?.yAxis?.[0] || 'value';
+                const hexValue = filteredData[0]?.[hexYField] ?? 0;
+                const hexTrend = filteredData[0]?.['trend'] || filteredData[0]?.['growth'];
+
+                // Get icon from Lucide icons if specified
+                const HexIcon = style?.cardIcon && icons[style.cardIcon as keyof typeof icons]
+                    ? icons[style.cardIcon as keyof typeof icons]
+                    : undefined;
+
+                return (
+                    <div className="flex items-center justify-center w-full h-full p-4">
+                        <HexagonStat
+                            label={style?.title || getLabel(hexYField)}
+                            value={typeof hexValue === 'number' ? hexValue.toLocaleString() : String(hexValue)}
+                            trend={typeof hexTrend === 'number' ? Number(hexTrend) : undefined}
+                            color={colors[0] || "#3b82f6"}
+                            icon={HexIcon ? React.createElement(HexIcon as any, { className: "w-6 h-6" }) : undefined}
+                        />
+                    </div>
+                );
+
+            case "statCard":
+                // StatCard uses custom metrics from config data
+                const statCardConfig = config.dataSource || {};
+                const statCardMetrics = (statCardConfig as any).metrics || [];
+
+                // If no metrics configured, show placeholder
+                if (statCardMetrics.length === 0) {
+                    return (
+                        <div className="flex items-center justify-center h-full text-gray-500">
+                            <div className="text-center">
+                                <div className="text-2xl mb-2">📊</div>
+                                <p className="text-sm">Chưa cấu hình metrics</p>
+                                <p className="text-xs">Vào tab "Kiểu dáng" để thêm metrics</p>
+                            </div>
+                        </div>
+                    );
+                }
+
+                return (
+                    <StatCard
+                        title={style?.title || "Stat Card"}
+                        icon={style?.cardIcon}
+                        metrics={statCardMetrics}
+                        backgroundColor={style?.cardBackgroundColor || "#ffffff"}
+                        accentColor={colors[0] || "#0066FF"}
+                    />
+                );
 
             default:
                 return (
@@ -976,7 +1219,7 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
     };
 
     return (
-        <div className="w-full h-full animate-fade-in">
+        <div className="w-full h-full animate-fade-in relative">
             {style?.title && (
                 <h3
                     className="font-semibold text-[#0F172A] mb-3"
@@ -988,6 +1231,21 @@ export function DynamicChart({ config, data, width = "100%", height = "100%" }: 
                     {style.title}
                 </h3>
             )}
+
+            {/* Chart Filter */}
+            {enableFilter && (
+                <div className="absolute top-2 right-2 z-10">
+                <FilterBuilder
+                    data={data}
+                    availableFields={availableFields}
+                    filters={chartFilters}
+                    onChange={handleFilterChange}
+                    onApplyFilters={() => {}}
+                    className="shadow-lg"
+                />
+                </div>
+            )}
+
             {renderChart()}
         </div>
     );

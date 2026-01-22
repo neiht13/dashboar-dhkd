@@ -2,8 +2,18 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
 
+// JWT Secret - MUST be set via environment variables in production
+const JWT_SECRET_STRING = process.env.JWT_SECRET || process.env.BETTER_AUTH_SECRET;
+
+if (!JWT_SECRET_STRING && process.env.NODE_ENV === 'production') {
+    throw new Error(
+        'Please define JWT_SECRET environment variable in production.\n' +
+        'See .env.example for reference.'
+    );
+}
+
 const JWT_SECRET = new TextEncoder().encode(
-    process.env.JWT_SECRET || process.env.BETTER_AUTH_SECRET || 'default-secret-change-in-production'
+    JWT_SECRET_STRING || 'dev-secret-change-in-production'
 );
 
 const protectedRoutes = [
@@ -19,7 +29,7 @@ const publicRoutes = [
     '/public',
 ];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
     // Allow public routes

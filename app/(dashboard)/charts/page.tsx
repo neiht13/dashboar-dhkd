@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { Plus, BarChart3, LineChart, PieChart, Trash2, Edit } from "lucide-react";
+import { Plus, BarChart3, LineChart, PieChart, Trash2, Edit, Copy } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,7 +17,7 @@ const chartIcons: Record<string, React.ReactNode> = {
 };
 
 export default function ChartsPage() {
-    const { charts, setCharts, deleteChart } = useChartStore();
+    const { charts, setCharts, deleteChart, saveChart } = useChartStore();
     const [isLoading, setIsLoading] = React.useState(true);
 
     React.useEffect(() => {
@@ -46,6 +46,36 @@ export default function ChartsPage() {
             month: "2-digit",
             year: "numeric",
         }).format(new Date(date));
+    };
+
+    const handleDuplicate = async (chart: any) => {
+        try {
+            // Create a copy of the chart config
+            // Remove ID and audit fields to create a new record
+            const { _id, id, createdAt, updatedAt, ...chartConfig } = chart;
+
+            const newChart = {
+                ...chartConfig,
+                name: `${chartConfig.name} (Copy)`,
+            };
+
+            const response = await fetch('/api/charts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newChart),
+            });
+
+            const result = await response.json();
+            if (result.success && result.data) {
+                // Update local store
+                saveChart(result.data);
+                // toast.success("Đã nhân bản biểu đồ"); // Assuming sonner is available or will use alert/console for now if not imported
+            } else {
+                console.error("Failed to duplicate:", result.error);
+            }
+        } catch (error) {
+            console.error("Error duplicating chart:", error);
+        }
     };
 
     return (
@@ -131,6 +161,15 @@ export default function ChartsPage() {
                                                             <Edit className="h-4 w-4" />
                                                         </Button>
                                                     </Link>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 text-[#0052CC] hover:text-[#0052CC]"
+                                                        onClick={() => handleDuplicate(chart)}
+                                                        title="Nhân bản"
+                                                    >
+                                                        <Copy className="h-4 w-4" />
+                                                    </Button>
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"

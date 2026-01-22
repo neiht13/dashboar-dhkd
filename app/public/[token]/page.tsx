@@ -207,6 +207,8 @@ export default async function PublicDashboardPage({ params }: PageProps) {
                                                 config={widget.config as ChartConfig}
                                                 data={(widget as { chartData?: Record<string, unknown>[] }).chartData || []}
                                                 height={layout.h * 100 - 40}
+                                                enableFilter={true}
+                                                onFilterChange={() => {}}
                                             />
                                         )}
                                         {widget.type === 'kpi' && (

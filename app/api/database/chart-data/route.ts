@@ -85,13 +85,55 @@ export async function POST(request: Request) {
         const schema = tableCheck.recordset[0].TABLE_SCHEMA;
         const tableName = tableCheck.recordset[0].TABLE_NAME;
 
+        // Fetch column metadata to validate fields
+        const columnsResult = await pool.request().query(`
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = '${schema}' AND TABLE_NAME = '${tableName}'
+        `);
+        const availableColumns = new Set(
+            columnsResult.recordset.map((row: any) => row.COLUMN_NAME.replace(/[^\w]/g, ''))
+        );
+        const isValidField = (field?: string) =>
+            !!field && availableColumns.has(field.replace(/[^\w]/g, ''));
+
+        // Validate yAxis
+        const validYAxis = yAxis.filter((col: string) => isValidField(col));
+        const invalidYAxis = yAxis.filter((col: string) => !isValidField(col));
+        if (validYAxis.length === 0) {
+            return NextResponse.json({
+                success: false,
+                error: `Không tìm thấy cột Y hợp lệ trong bảng. Cột sai: ${invalidYAxis.join(', ')}`,
+            }, { status: 400 });
+        }
+
+        // Validate xAxis
+        if (xAxis && !isValidField(xAxis)) {
+            return NextResponse.json({
+                success: false,
+                error: `Cột trục X '${xAxis}' không tồn tại trong bảng`,
+            }, { status: 400 });
+        }
+
+        // Validate groupBy
+        let sanitizedGroupBy: string[] | string | undefined = undefined;
+        if (Array.isArray(groupBy)) {
+            const validGroups = groupBy.filter((g: string) => isValidField(g));
+            sanitizedGroupBy = validGroups.length > 0 ? validGroups : undefined;
+        } else if (typeof groupBy === 'string' && isValidField(groupBy)) {
+            sanitizedGroupBy = groupBy;
+        }
+
+        // Validate orderBy
+        const sanitizedOrderBy = orderBy && isValidField(orderBy) ? orderBy : undefined;
+
         // Build aggregation function
         const aggFunc = aggregation.toUpperCase();
         const validAggFunctions = ['SUM', 'AVG', 'COUNT', 'MIN', 'MAX'];
         const selectedAgg = validAggFunctions.includes(aggFunc) ? aggFunc : 'SUM';
 
         // Build SELECT clause for Y axis columns with aggregation
-        const yAxisSelects = yAxis.map((col: string) => {
+        const yAxisSelects = validYAxis.map((col: string) => {
             const escapedCol = col.replace(/[^\w]/g, '');
             return `${selectedAgg}([${escapedCol}]) as [${escapedCol}]`;
         }).join(', ');
@@ -101,6 +143,7 @@ export async function POST(request: Request) {
         let groupByClause = '';
         let orderByClause = '';
         let selectXAxis = '';
+        let selectGroupBy = ''; // Additional columns for groupBy
 
         // Only process X-Axis if provided
         if (xAxis) {
@@ -144,30 +187,54 @@ export async function POST(request: Request) {
             });
         }
 
-        // Build GROUP BY clause
+        // Build GROUP BY clause AND SELECT for additional groupBy columns
         let fullGroupByClause = groupByClause;
-        if (groupBy && Array.isArray(groupBy) && groupBy.length > 0) {
-            const additionalGroups = groupBy.map((col: string) => `[${col.replace(/[^\w]/g, '')}]`).join(', ');
+        if (sanitizedGroupBy && Array.isArray(sanitizedGroupBy) && sanitizedGroupBy.length > 0) {
+            const groupByColumns = sanitizedGroupBy.map((col: string) => `[${col.replace(/[^\w]/g, '')}]`);
+            const additionalGroups = groupByColumns.join(', ');
             fullGroupByClause = fullGroupByClause ? `${fullGroupByClause}, ${additionalGroups}` : additionalGroups;
-        } else if (groupBy && typeof groupBy === 'string') {
-            const additionalGroup = `[${groupBy.replace(/[^\w]/g, '')}]`;
-            fullGroupByClause = fullGroupByClause ? `${fullGroupByClause}, ${additionalGroup}` : additionalGroup;
+            // Also add to SELECT clause
+            selectGroupBy = groupByColumns.join(', ') + ',';
+        } else if (sanitizedGroupBy && typeof sanitizedGroupBy === 'string') {
+            const escapedGroupBy = `[${sanitizedGroupBy.replace(/[^\w]/g, '')}]`;
+            fullGroupByClause = fullGroupByClause ? `${fullGroupByClause}, ${escapedGroupBy}` : escapedGroupBy;
+            selectGroupBy = `${escapedGroupBy},`;
+        }
+
+        // Handle drillDownLabelField (Add to Select using MAX for aggregation)
+        let selectLabel = '';
+        const { drillDownLabelField } = body;
+        if (drillDownLabelField && isValidField(drillDownLabelField)) {
+            const escapedLabel = `[${drillDownLabelField.replace(/[^\w]/g, '')}]`;
+            // Only add if not already in groupBy or xAxis
+            // Check if the label field is already part of the X-axis or explicit GROUP BY columns
+            const isLabelInXAxis = xAxis && xAxis.replace(/[^\w]/g, '') === drillDownLabelField.replace(/[^\w]/g, '');
+            const isLabelInGroupBy = (Array.isArray(sanitizedGroupBy) && sanitizedGroupBy.some(g => g.replace(/[^\w]/g, '') === drillDownLabelField.replace(/[^\w]/g, ''))) ||
+                (typeof sanitizedGroupBy === 'string' && sanitizedGroupBy.replace(/[^\w]/g, '') === drillDownLabelField.replace(/[^\w]/g, ''));
+
+            if (!isLabelInXAxis && !isLabelInGroupBy) {
+                // Do NOT add to Group By, instead use MAX to pick one label per group
+                // This prevents splitting rows if labels are inconsistent for the same ID
+                selectLabel = `MAX(${escapedLabel}) as ${escapedLabel},`;
+            }
         }
 
         const sortDir = orderDirection.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
 
         // Build ORDER BY clause
-        if (orderBy) {
-            const sortColStr = `[${orderBy.replace(/[^\w]/g, '')}]`;
+        if (sanitizedOrderBy) {
+            const sortColStr = `[${sanitizedOrderBy.replace(/[^\w]/g, '')}]`;
             orderByClause = `ORDER BY ${sortColStr} ${sortDir}`;
         }
 
         // Build query
         let query: string;
-        // Construct final query
+        // Construct final query - include groupBy columns in SELECT
         query = `
             SELECT TOP ${limit}
                 ${selectXAxis}
+                ${selectGroupBy}
+                ${selectLabel}
                 ${yAxisSelects}
             FROM [${schema}].[${tableName}]
             ${whereClause}
