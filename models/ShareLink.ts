@@ -5,6 +5,9 @@ export interface IShareLink extends Document {
     _id: mongoose.Types.ObjectId;
     dashboardId: mongoose.Types.ObjectId;
     token: string;
+    type: 'public' | 'jwt';
+    secretKey?: string;
+    allowedDomains?: string[];
     permission: 'view' | 'edit';
     expiresAt?: Date;
     maxViews?: number;
@@ -31,6 +34,18 @@ const ShareLinkSchema = new Schema<IShareLink>(
             index: true,
             default: () => crypto.randomBytes(32).toString('hex'),
         },
+        type: {
+            type: String,
+            enum: ['public', 'jwt'],
+            default: 'public',
+        },
+        secretKey: {
+            type: String,
+            // Only required if type is jwt, but we'll handle generation in logic
+        },
+        allowedDomains: [{
+            type: String,
+        }],
         permission: {
             type: String,
             enum: ['view', 'edit'],

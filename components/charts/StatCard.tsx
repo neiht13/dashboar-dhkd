@@ -4,15 +4,19 @@ import React from "react";
 import * as icons from "lucide-react";
 import { LineChart, Line, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { StatCardMetric } from "@/types";
+import { cn } from "@/lib/utils";
 
 interface StatCardProps {
     title?: string;
-    icon?: string; // Lucide icon name
+    icon?: string; // Lucide icon name (global for card)
     metrics?: StatCardMetric[]; // Nếu không có, sẽ tự động tạo từ data
     data?: any[]; // Dữ liệu gốc để tự động tạo metrics
     dataSource?: any; // Cấu hình data source
     backgroundColor?: string;
     accentColor?: string;
+    layout?: "list" | "grid"; // New prop: layout mode
+    gridCols?: 1 | 2 | 3 | 4; // New prop: responsive grid cols
+    className?: string; // New prop: custom class
 }
 
 export function StatCard({
@@ -22,7 +26,10 @@ export function StatCard({
     data = [],
     dataSource,
     backgroundColor = "#ffffff",
-    accentColor = "#0066FF"
+    accentColor = "#0066FF",
+    layout = "list",
+    gridCols = 1,
+    className,
 }: StatCardProps) {
     // Tự động tạo metrics từ dữ liệu nếu không được cung cấp
     const metrics = React.useMemo(() => {
@@ -40,22 +47,9 @@ export function StatCard({
         const yAxis = dataSource.yAxis;
 
         // Nếu chỉ có một yAxis field, tạo một metric đơn giản
-        if (yAxis.length === 1) {
-            const field = yAxis[0];
-            const totalValue = data.reduce((acc, curr) => {
-                const val = Number(curr[field]);
-                return isNaN(val) ? acc : acc + val;
-            }, 0);
-
-            autoMetrics.push({
-                label: field,
-                value: totalValue,
-                type: 'number',
-                color: accentColor
-            });
-        } else {
-            // Nếu có nhiều yAxis fields, tạo metrics cho từng field
-            yAxis.forEach((field, index) => {
+        // Nếu layout là grid và có nhiều yAxis, tạo nhiều metric
+        if (yAxis.length >= 1) {
+            yAxis.forEach((field: string) => {
                 const totalValue = data.reduce((acc, curr) => {
                     const val = Number(curr[field]);
                     return isNaN(val) ? acc : acc + val;
@@ -73,23 +67,28 @@ export function StatCard({
         return autoMetrics;
     }, [providedMetrics, data, dataSource, accentColor]);
 
-    // Icon component từ Lucide
-    const IconComponent = icon && icons[icon as keyof typeof icons]
-        ? icons[icon as keyof typeof icons] as React.ComponentType<{ className?: string }>
-        : null;
+    // Helper to get Icon component
+    const getIcon = (iconName?: string) => {
+        if (!iconName) return null;
+        // @ts-ignore
+        const Icon = icons[iconName];
+        return Icon ? Icon as React.ElementType : null;
+    };
+
+    const MainIcon = getIcon(icon);
 
     // Mini sparkline component
     const MiniSparkline = ({ data, color }: { data: number[]; color: string }) => {
         const sparklineData = data.map((value, index) => ({ value, index }));
 
         return (
-            <ResponsiveContainer width={60} height={20}>
+            <ResponsiveContainer width={80} height={32}>
                 <LineChart data={sparklineData}>
                     <Line
                         type="monotone"
                         dataKey="value"
                         stroke={color}
-                        strokeWidth={1.5}
+                        strokeWidth={2}
                         dot={false}
                         activeDot={false}
                     />
@@ -106,22 +105,23 @@ export function StatCard({
         ];
 
         return (
-            <div className="relative w-4 h-4">
+            <div className="relative w-8 h-8">
                 <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                         <Pie
                             data={data}
                             cx="50%"
                             cy="50%"
-                            innerRadius={6}
-                            outerRadius={8}
+                            innerRadius={10}
+                            outerRadius={14}
                             paddingAngle={0}
                             dataKey="value"
                             startAngle={90}
                             endAngle={450}
+                            stroke="none"
                         >
                             <Cell fill={color} />
-                            <Cell fill="#E2E8F0" />
+                            <Cell fill={color + "30"} />
                         </Pie>
                     </PieChart>
                 </ResponsiveContainer>
@@ -133,34 +133,25 @@ export function StatCard({
     const MiniGauge = ({ progress, color }: { progress: number; color: string }) => {
         const angle = (progress / 100) * 180; // 180 degrees arc
         const radian = (angle * Math.PI) / 180;
-        const x = 10 + 8 * Math.cos(Math.PI - radian);
-        const y = 10 + 8 * Math.sin(Math.PI - radian);
+        const x = 15 + 12 * Math.cos(Math.PI - radian);
+        const y = 15 + 12 * Math.sin(Math.PI - radian);
 
         return (
-            <div className="relative w-5 h-3 flex items-center justify-center">
-                <svg width="20" height="12" viewBox="0 0 20 12">
-                    {/* Background arc */}
+            <div className="relative w-8 h-5 flex items-center justify-center">
+                <svg width="30" height="18" viewBox="0 0 30 18">
                     <path
-                        d="M 2 10 A 8 8 0 0 1 18 10"
+                        d="M 3 15 A 12 12 0 0 1 27 15"
                         fill="none"
-                        stroke="#E2E8F0"
-                        strokeWidth="2"
+                        stroke={color + "30"}
+                        strokeWidth="3"
                         strokeLinecap="round"
                     />
-                    {/* Progress arc */}
                     <path
-                        d={`M 2 10 A 8 8 0 0 ${progress > 50 ? 1 : 0} ${x} ${y}`}
+                        d={`M 3 15 A 12 12 0 0 ${progress > 50 ? 1 : 0} ${x} ${y}`}
                         fill="none"
                         stroke={color}
-                        strokeWidth="2"
+                        strokeWidth="3"
                         strokeLinecap="round"
-                    />
-                    {/* Pointer dot */}
-                    <circle
-                        cx={x}
-                        cy={y}
-                        r="1.5"
-                        fill={color}
                     />
                 </svg>
             </div>
@@ -170,77 +161,132 @@ export function StatCard({
     // Format value
     const formatValue = (value: string | number): string => {
         if (typeof value === 'number') {
-            if (value >= 1000000) {
-                return `${(value / 1000000).toFixed(1)}tr`;
-            } else if (value >= 1000) {
-                return `${(value / 1000).toFixed(1)}k`;
-            }
+            if (value >= 1000000000) return `${(value / 1000000000).toFixed(1)}b`;
+            if (value >= 1000000) return `${(value / 1000000).toFixed(1)}m`;
+            if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
             return value.toLocaleString();
         }
         return value;
     };
 
+    const renderMetricItem = (metric: StatCardMetric, index: number) => {
+        const MetricIcon = getIcon(metric.icon);
+        const isPositive = metric.isPositive;
+        const trendColor = isPositive === true ? "text-emerald-600" : isPositive === false ? "text-red-600" : "text-muted-foreground";
+
+        return (
+            <div
+                key={index}
+                className={cn(
+                    "flex flex-col gap-2 p-3 sm:p-4 rounded-xl border bg-card/50",
+                    layout === 'list' && metrics.length > 1 ? "bg-card/50" : "border-0 shadow-none bg-transparent p-0"
+                )}
+            >
+                {/* Header: Icon + Title */}
+                <div className="flex items-center gap-2 text-muted-foreground">
+                    {MetricIcon ? (
+                        <MetricIcon className="size-4 shrink-0" />
+                    ) : MainIcon && index === 0 && layout !== 'grid' ? (
+                        <MainIcon className="size-4 shrink-0" style={{ color: accentColor }} />
+                    ) : null}
+                    <span className="text-xs sm:text-sm font-medium truncate">{metric.label}</span>
+                </div>
+
+                {/* Value */}
+                <div className="flex items-baseline gap-2">
+                    <p className="text-xl sm:text-2xl font-semibold leading-none tracking-tight">
+                        {formatValue(metric.value)}
+                    </p>
+                </div>
+
+                {/* Footer: Trend or Mini Chart */}
+                <div className="flex items-center gap-2 text-xs sm:text-sm h-6">
+                    {metric.change ? (
+                        <>
+                            <span className={cn("font-medium", trendColor)}>
+                                {metric.change}
+                                {metric.changeValue && <span className="hidden sm:inline ml-1 text-muted-foreground/80 font-normal">{metric.changeValue}</span>}
+                            </span>
+                            {metric.description && <span className="text-muted-foreground hidden sm:inline truncate max-w-[100px]">{metric.description}</span>}
+                        </>
+                    ) : (
+                        metric.description && <span className="text-muted-foreground truncate">{metric.description}</span>
+                    )}
+
+                    {/* Mini Charts pushed to right */}
+                    <div className="ml-auto">
+                        {metric.type === 'sparkline' && metric.chartData && (
+                            <MiniSparkline
+                                data={metric.chartData}
+                                color={metric.color || accentColor}
+                            />
+                        )}
+                        {metric.type === 'donut' && metric.progress !== undefined && (
+                            <MiniDonut
+                                progress={metric.progress}
+                                color={metric.color || accentColor}
+                            />
+                        )}
+                        {metric.type === 'gauge' && metric.progress !== undefined && (
+                            <MiniGauge
+                                progress={metric.progress}
+                                color={metric.color || accentColor}
+                            />
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    if (layout === "grid" || (metrics.length > 1 && !title)) {
+        return (
+            <div className={cn(
+                "grid gap-4",
+                gridCols === 1 && "grid-cols-1",
+                gridCols === 2 && "grid-cols-1 sm:grid-cols-2",
+                gridCols === 3 && "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3",
+                gridCols === 4 && "grid-cols-2 lg:grid-cols-4",
+                className
+            )}>
+                {metrics.map((metric, index) => renderMetricItem(metric, index))}
+            </div>
+        );
+    }
+
     return (
         <div
-            className="p-4 rounded-lg border shadow-sm"
-            style={{ backgroundColor, borderColor: accentColor + '20' }}
+            className={cn(
+                "p-4 rounded-xl border bg-card shadow-sm flex flex-col gap-4",
+                className
+            )}
+            style={{
+                borderColor: backgroundColor !== '#ffffff' ? accentColor + '20' : undefined,
+                backgroundColor: backgroundColor !== '#ffffff' ? backgroundColor : undefined
+            }}
         >
-            {/* Header - only show if title is provided or icon exists */}
-            {(title || IconComponent) && (
-                <div className="flex items-center gap-2 mb-4 pb-2 border-b" style={{ borderColor: accentColor + '20' }}>
-                    {IconComponent && (
-                        <IconComponent
-                            className="w-5 h-5"
-                            style={{ color: accentColor }}
-                        />
-                    )}
-                    {title && (
+            {title && (
+                <div className="flex items-center justify-between pb-2 border-b" style={{ borderColor: accentColor + '20' }}>
+                    <div className="flex items-center gap-2">
+                        {MainIcon && (
+                            <MainIcon
+                                className="w-5 h-5"
+                                style={{ color: accentColor }}
+                            />
+                        )}
                         <h3 className="font-semibold text-sm uppercase tracking-wide" style={{ color: accentColor }}>
                             {title}
                         </h3>
-                    )}
+                    </div>
                 </div>
             )}
 
-            {/* Metrics */}
-            <div className="space-y-3">
+            <div className={cn("flex flex-col gap-4")}>
                 {metrics.map((metric, index) => (
-                    <div key={index} className="flex items-center justify-between">
-                        {/* Metric Label */}
-                        <span className="text-xs text-gray-600 font-medium">
-                            {metric.label}
-                        </span>
-
-                        {/* Metric Value & Chart */}
-                        <div className="flex items-center gap-2">
-                            {/* Value */}
-                            <span className="text-sm font-bold text-gray-800">
-                                {formatValue(metric.value)}
-                            </span>
-
-                            {/* Mini Chart */}
-                            {metric.type === 'sparkline' && metric.chartData && (
-                                <MiniSparkline
-                                    data={metric.chartData}
-                                    color={metric.color || accentColor}
-                                />
-                            )}
-
-                            {metric.type === 'donut' && metric.progress !== undefined && (
-                                <MiniDonut
-                                    progress={metric.progress}
-                                    color={metric.color || accentColor}
-                                />
-                            )}
-
-                            {metric.type === 'gauge' && metric.progress !== undefined && (
-                                <MiniGauge
-                                    progress={metric.progress}
-                                    color={metric.color || accentColor}
-                                />
-                            )}
-                        </div>
-                    </div>
+                    <React.Fragment key={index}>
+                        {renderMetricItem(metric, index)}
+                        {index < metrics.length - 1 && <div className="h-px bg-border/50" />}
+                    </React.Fragment>
                 ))}
             </div>
         </div>

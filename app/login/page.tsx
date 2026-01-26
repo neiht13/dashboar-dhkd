@@ -66,16 +66,16 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#0052CC]/10 via-[#F8FAFC] to-[#6A00CC]/10 p-4">
-            <Card className="w-full max-w-md shadow-xl">
+        <div className="min-h-screen flex items-center justify-center bg-muted/40 p-4">
+            <Card className="w-full max-w-md shadow-lg border-border bg-card">
                 <CardHeader className="text-center pb-2">
-                    <div className="mx-auto size-14 rounded-xl bg-gradient-to-br from-[#0052CC] to-[#6A00CC] flex items-center justify-center mb-4 shadow-lg">
-                        <Activity className="h-8 w-8 text-white" />
+                    <div className="mx-auto size-14 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
+                        <Activity className="h-8 w-8 text-primary" />
                     </div>
-                    <CardTitle className="text-2xl font-bold text-[#0F172A]">
+                    <CardTitle className="text-2xl font-bold text-card-foreground">
                         {isRegister ? "Tạo tài khoản" : "Đăng nhập"}
                     </CardTitle>
-                    <p className="text-[#64748B] text-sm mt-2">
+                    <p className="text-muted-foreground text-sm mt-2">
                         {isRegister
                             ? "Đăng ký để bắt đầu sử dụng VNPT DTP BI Analytics"
                             : "Chào mừng bạn trở lại với VNPT DTP BI Analytics"}
@@ -86,7 +86,7 @@ export default function LoginPage() {
                     <form onSubmit={handleSubmit} className="space-y-4">
                         {isRegister && (
                             <div>
-                                <label className="text-sm font-medium text-[#0F172A] mb-1.5 block">
+                                <label className="text-sm font-medium text-foreground mb-1.5 block">
                                     Họ và tên
                                 </label>
                                 <Input
@@ -102,7 +102,7 @@ export default function LoginPage() {
                         )}
 
                         <div>
-                            <label className="text-sm font-medium text-[#0F172A] mb-1.5 block">
+                            <label className="text-sm font-medium text-foreground mb-1.5 block">
                                 Email
                             </label>
                             <Input
@@ -117,7 +117,7 @@ export default function LoginPage() {
                         </div>
 
                         <div>
-                            <label className="text-sm font-medium text-[#0F172A] mb-1.5 block">
+                            <label className="text-sm font-medium text-foreground mb-1.5 block">
                                 Mật khẩu
                             </label>
                             <div className="relative">
@@ -133,7 +133,7 @@ export default function LoginPage() {
                                 <button
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#0F172A]"
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                                 >
                                     {showPassword ? (
                                         <EyeOff className="h-4 w-4" />
@@ -146,7 +146,7 @@ export default function LoginPage() {
 
                         {isRegister && (
                             <div>
-                                <label className="text-sm font-medium text-[#0F172A] mb-1.5 block">
+                                <label className="text-sm font-medium text-foreground mb-1.5 block">
                                     Xác nhận mật khẩu
                                 </label>
                                 <Input
@@ -163,8 +163,8 @@ export default function LoginPage() {
 
                         {/* Error Messages */}
                         {(validationError || error) && (
-                            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                                <p className="text-sm text-red-600">
+                            <div className="p-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/20 rounded-lg">
+                                <p className="text-sm text-red-600 dark:text-red-400">
                                     {validationError || error}
                                 </p>
                             </div>
@@ -172,7 +172,7 @@ export default function LoginPage() {
 
                         <Button
                             type="submit"
-                            className="w-full h-11 bg-[#0052CC] hover:bg-[#0052CC]/90"
+                            className="w-full h-11"
                             disabled={isLoading}
                         >
                             {isLoading ? (
@@ -189,11 +189,11 @@ export default function LoginPage() {
                     </form>
 
                     <div className="mt-6 text-center">
-                        <p className="text-sm text-[#64748B]">
+                        <p className="text-sm text-muted-foreground">
                             {isRegister ? "Đã có tài khoản?" : "Chưa có tài khoản?"}
                             <button
                                 onClick={toggleMode}
-                                className="ml-1 text-[#0052CC] font-medium hover:underline"
+                                className="ml-1 text-primary font-medium hover:underline"
                             >
                                 {isRegister ? "Đăng nhập" : "Đăng ký ngay"}
                             </button>

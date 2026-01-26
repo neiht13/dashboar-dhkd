@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useMemo } from "react";
+import React from "react";
 import {
     LineChart,
     Line,
@@ -32,13 +32,12 @@ import {
     Label,
 } from "recharts";
 import * as icons from "lucide-react";
-import type { ChartConfig, Filter } from "@/types";
+import type { ChartConfig } from "@/types";
 import { getChartColor } from "@/lib/utils";
-import { MapChart } from "./MapChart";
+// Lazy load MapChart to reduce initial bundle size
+import { MapChart } from "./MapChart.lazy";
 import { HexagonStat } from "./HexagonStat";
 import { StatCard } from "./StatCard";
-import { FilterBuilder } from "@/components/ui/FilterBuilder";
-import type { StatCardMetric, Filter } from "@/types";
 
 interface DynamicChartProps {
     config: ChartConfig;
@@ -51,9 +50,6 @@ interface DynamicChartProps {
     onDrillDown?: (filters: Array<{ field: string; operator: string; value: string | number }>) => Promise<any>;
     enableCrossFilter?: boolean;
     chartId?: string;
-    // Filter support
-    enableFilter?: boolean;
-    onFilterChange?: (filters: any[]) => void;
 }
 
 // Vietnamese labels for legend and tooltip
@@ -75,14 +71,16 @@ const getLabel = (key: string): string => VI_LABELS[key] || key;
 
 // Modern color palette with gradients
 const MODERN_COLORS = [
+    "#6e3ff3", // Vivid Purple
+    "#e255f2", // Vivid Pink
+    "#35b9e9", // Sky Blue
+    "#375dfb", // Royal Blue
     "#0066FF", // Primary Blue
     "#8B5CF6", // Purple
     "#10B981", // Emerald
     "#F59E0B", // Amber
     "#EF4444", // Red
     "#06B6D4", // Cyan
-    "#EC4899", // Pink
-    "#14B8A6", // Teal
 ];
 
 // Custom Dark Tooltip Component
@@ -90,13 +88,13 @@ const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?:
     if (!active || !payload?.length) return null;
 
     return (
-        <div className="bg-[#0F172A] text-white px-3 py-2 shadow-xl border-0" style={{ borderRadius: '4px' }}>
+        <div className="bg-[#0F172A]/95 backdrop-blur-sm text-white px-3 py-2 shadow-xl border border-white/10" style={{ borderRadius: '8px' }}>
             <p className="text-xs font-medium text-[#94A3B8] mb-1">{label}</p>
             {payload.map((entry, index) => (
                 <div key={index} className="flex items-center gap-2 text-sm">
                     <span
-                        className="w-2 h-2"
-                        style={{ backgroundColor: entry.color, borderRadius: '2px' }}
+                        className="w-2.5 h-2.5"
+                        style={{ backgroundColor: entry.color, borderRadius: '50%' }}
                     />
                     <span className="text-[#E2E8F0]">{getLabel(entry.name)}:</span>
                     <span className="font-semibold">{typeof entry.value === 'number' ? entry.value.toLocaleString() : entry.value}</span>
@@ -168,13 +166,54 @@ export function DynamicChart({
     enableDrillDown = false,
     enableCrossFilter = false,
     chartId,
-    enableFilter = false,
-    onFilterChange,
 }: DynamicChartProps) {
+    // Responsive height calculation
+    const chartHeight = typeof height === 'number' 
+        ? Math.max(200, height) // Minimum height
+        : height;
     const { type, dataSource, style } = config;
 
-    // Filter state
-    const [chartFilters, setChartFilters] = useState<Filter[]>([]);
+    // State for active sector (Pie/Donut)
+    const [activeIndex, setActiveIndex] = React.useState<number | undefined>(undefined);
+    const onPieEnter = (_: any, index: number) => setActiveIndex(index);
+    const onPieLeave = () => setActiveIndex(undefined);
+
+    const renderActiveShape = (props: any) => {
+        const RADIAN = Math.PI / 180;
+        const { cx, cy, midAngle, innerRadius, outerRadius, startAngle, endAngle, fill, payload, percent, value } = props;
+        const sin = Math.sin(-midAngle * RADIAN);
+        const cos = Math.cos(-midAngle * RADIAN);
+        const sx = cx + (outerRadius + 10) * cos;
+        const sy = cy + (outerRadius + 10) * sin;
+        const mx = cx + (outerRadius + 30) * cos;
+        const my = cy + (outerRadius + 30) * sin;
+        const ex = mx + (cos >= 0 ? 1 : -1) * 22;
+        const ey = my;
+        const textAnchor = cos >= 0 ? 'start' : 'end';
+
+        return (
+            <g>
+                <Sector
+                    cx={cx}
+                    cy={cy}
+                    innerRadius={innerRadius}
+                    outerRadius={outerRadius + 6}
+                    startAngle={startAngle}
+                    endAngle={endAngle}
+                    fill={fill}
+                />
+                <Sector
+                    cx={cx}
+                    cy={cy}
+                    startAngle={startAngle}
+                    endAngle={endAngle}
+                    innerRadius={outerRadius + 6}
+                    outerRadius={outerRadius + 8}
+                    fill={fill}
+                />
+            </g>
+        );
+    };
 
     // Handle chart element click for drill-down/cross-filter
     const handleChartClick = (chartData: Record<string, unknown> | null, field?: string) => {
@@ -183,22 +222,6 @@ export function DynamicChart({
             onDataPointClick(chartData, field || dataSource?.xAxis);
         }
     };
-
-    // Handle filter changes
-    const handleFilterChange = useCallback((filters: Filter[]) => {
-        setChartFilters(filters);
-        if (onFilterChange) {
-            onFilterChange(filters);
-        }
-    }, [onFilterChange]);
-
-    // Get available fields for filtering
-    const availableFields = React.useMemo(() => {
-        if (!data || data.length === 0) return [];
-        return Object.keys(data[0]).filter(field =>
-            data.some(item => item[field] !== null && item[field] !== undefined)
-        );
-    }, [data]);
 
 
     // Cursor style when drill-down or cross-filter is enabled
@@ -225,25 +248,10 @@ export function DynamicChart({
     const getFieldColor = (field: string, index: number): string =>
         yAxisFieldColors[field] || colors[index] || getChartColor(index);
 
-    // First filter by chart filters
-    const chartFilteredData = React.useMemo(() => {
-        if (chartFilters.length === 0) return data;
-
-        return data.filter(item => {
-            return chartFilters.every(filter => {
-                const fieldValue = item[filter.field];
-                const filterValue = filter.value;
-
-                // Simple equality filter for now
-                return String(fieldValue).toLowerCase().includes(String(filterValue).toLowerCase());
-            });
-        });
-    }, [data, chartFilters]);
-
-    // Then filter by xAxisExclude
+    // Filter by xAxisExclude
     const filteredData = xAxisExclude.length > 0 && dataSource?.xAxis
-        ? chartFilteredData.filter(item => !xAxisExclude.includes(String(item[dataSource.xAxis])))
-        : chartFilteredData;
+        ? data.filter(item => !xAxisExclude.includes(String(item[dataSource.xAxis])))
+        : data;
 
     // Select tooltip component based on theme
     const TooltipComponent = tooltipTheme === 'light' ? CustomTooltipLight : CustomTooltip;
@@ -376,7 +384,7 @@ export function DynamicChart({
 
             case "line":
                 return (
-                    <ResponsiveContainer width="100%" height={height}>
+                    <ResponsiveContainer width="100%" height={chartHeight} className="min-h-[200px]">
                         <LineChart
                             data={filteredData}
                             margin={{ top: 20, right: 20, bottom: 10, left: 10 }}
@@ -461,7 +469,7 @@ export function DynamicChart({
 
             case "bar":
                 return (
-                    <ResponsiveContainer width="100%" height={height}>
+                    <ResponsiveContainer width="100%" height={chartHeight} className="min-h-[200px]">
                         <BarChart
                             data={filteredData}
                             margin={{ top: 20, right: 20, bottom: 10, left: 10 }}
@@ -531,7 +539,7 @@ export function DynamicChart({
 
             case "stackedBar":
                 return (
-                    <ResponsiveContainer width="100%" height={height}>
+                    <ResponsiveContainer width="100%" height={chartHeight} className="min-h-[200px]">
                         <BarChart
                             data={filteredData}
                             margin={{ top: 10, right: 10, bottom: 10, left: 10 }}
@@ -595,7 +603,7 @@ export function DynamicChart({
 
             case "horizontalBar":
                 return (
-                    <ResponsiveContainer width="100%" height={height}>
+                    <ResponsiveContainer width="100%" height={chartHeight} className="min-h-[200px]">
                         <BarChart
                             data={filteredData}
                             layout="vertical"
@@ -659,7 +667,7 @@ export function DynamicChart({
 
             case "area":
                 return (
-                    <ResponsiveContainer width="100%" height={height}>
+                    <ResponsiveContainer width="100%" height={chartHeight} className="min-h-[200px]">
                         <AreaChart
                             data={filteredData}
                             margin={{ top: 20, right: 20, bottom: 10, left: 10 }}
@@ -859,78 +867,96 @@ export function DynamicChart({
                 };
 
                 return (
-                    <ResponsiveContainer width="100%" height={height}>
-                        <PieChart style={clickableCursor}>
-                            {style?.showTooltip && <Tooltip content={<TooltipComponent />} />}
-                            {style?.showLegend && <Legend content={renderLegend()} verticalAlign={legendPosition as 'top' | 'bottom'} />}
-                            {isSized ? (
-                                // Sized Pie: Render each slice as a separate Pie component for unique radii
-                                (processedPieData.reduce((acc: any[], entry: any, index: number) => {
-                                    const value = Number(entry[yAxisKey]) || 0;
-                                    const percentage = totalValue ? value / totalValue : 0;
-                                    const startAngle = 90 - (acc.length > 0 ? acc[acc.length - 1].nextAngle : 0) * 360;
-                                    const endAngle = 90 - ((acc.length > 0 ? acc[acc.length - 1].nextAngle : 0) + percentage) * 360;
-                                    const nextAngle = (acc.length > 0 ? acc[acc.length - 1].nextAngle : 0) + percentage;
+                    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+                        <ResponsiveContainer width="100%" height={chartHeight} className="min-h-[200px]">
+                            <PieChart style={clickableCursor}>
+                                {style?.showTooltip && <Tooltip content={<TooltipComponent />} />}
+                                {style?.showLegend && <Legend content={renderLegend()} verticalAlign={legendPosition as 'top' | 'bottom'} />}
+                                {isSized ? (
+                                    // Sized Pie: Render each slice as a separate Pie component for unique radii
+                                    (processedPieData.reduce((acc: any[], entry: any, index: number) => {
+                                        const value = Number(entry[yAxisKey]) || 0;
+                                        const percentage = totalValue ? value / totalValue : 0;
+                                        const startAngle = 90 - (acc.length > 0 ? acc[acc.length - 1].nextAngle : 0) * 360;
+                                        const endAngle = 90 - ((acc.length > 0 ? acc[acc.length - 1].nextAngle : 0) + percentage) * 360;
+                                        const nextAngle = (acc.length > 0 ? acc[acc.length - 1].nextAngle : 0) + percentage;
 
-                                    const valueRatio = maxValue ? value / maxValue : 0;
-                                    const outerRadius = BASE_RADIUS + (valueRatio * radiusRange);
+                                        const valueRatio = maxValue ? value / maxValue : 0;
+                                        const outerRadius = BASE_RADIUS + (valueRatio * radiusRange);
 
-                                    // Pass 1: Visual Segment (provides Legend)
-                                    acc.push({
-                                        nextAngle,
-                                        component: (
-                                            <Pie
-                                                key={`sized-seg-${index}`}
-                                                data={[entry]}
-                                                dataKey={yAxisKey}
-                                                nameKey={xAxisKey}
-                                                cx="50%"
-                                                cy="50%"
-                                                startAngle={startAngle}
-                                                endAngle={endAngle}
-                                                innerRadius={isDonut ? 30 : 0}
-                                                outerRadius={outerRadius}
+                                        // Pass 1: Visual Segment (provides Legend)
+                                        acc.push({
+                                            nextAngle,
+                                            component: (
+                                                <Pie
+                                                    key={`sized-seg-${index}`}
+                                                    data={[entry]}
+                                                    dataKey={yAxisKey}
+                                                    nameKey={xAxisKey}
+                                                    cx="50%"
+                                                    cy="50%"
+                                                    startAngle={startAngle}
+                                                    endAngle={endAngle}
+                                                    innerRadius={isDonut ? 30 : 0}
+                                                    outerRadius={outerRadius}
+                                                    fill={getFieldColor(entry[xAxisKey] || String(index), index)}
+                                                    stroke="#fff"
+                                                    strokeWidth={2}
+                                                    onClick={() => handleChartClick(entry)}
+                                                    label={renderPieLabelWithLine}
+                                                    labelLine={false}
+                                                    {...animationProps}
+                                                    onMouseEnter={(e) => onPieEnter(e, index)}
+                                                />
+                                            )
+                                        });
+
+                                        return acc;
+                                    }, []).map(item => item.component))
+                                ) : (
+                                    <Pie
+                                        data={processedPieData}
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={isDonut ? "55%" : 0}
+                                        outerRadius="75%"
+                                        dataKey={yAxisKey}
+                                        nameKey={xAxisKey}
+                                        paddingAngle={2}
+                                        onClick={(data) => data && handleChartClick(data.payload || data)}
+                                        label={renderPieLabelWithLine}
+                                        labelLine={false}
+                                        {...animationProps}
+                                        activeIndex={activeIndex}
+                                        activeShape={renderActiveShape}
+                                        onMouseEnter={onPieEnter}
+                                        onMouseLeave={onPieLeave}
+                                    >
+                                        {processedPieData.map((entry: any, index: number) => (
+                                            <Cell
+                                                key={`cell-${index}`}
                                                 fill={getFieldColor(entry[xAxisKey] || String(index), index)}
                                                 stroke="#fff"
                                                 strokeWidth={2}
-                                                onClick={() => handleChartClick(entry)}
-                                                label={renderPieLabelWithLine}
-                                                labelLine={false}
-                                                {...animationProps}
+                                                style={{ outline: 'none' }}
                                             />
-                                        )
-                                    });
-
-                                    return acc;
-                                }, []).map(item => item.component))
-                            ) : (
-                                <Pie
-                                    data={processedPieData}
-                                    cx="50%"
-                                    cy="50%"
-                                    innerRadius={isDonut ? "55%" : 0}
-                                    outerRadius="75%"
-                                    dataKey={yAxisKey}
-                                    nameKey={xAxisKey}
-                                    paddingAngle={2}
-                                    onClick={(data) => data && handleChartClick(data.payload || data)}
-                                    label={renderPieLabelWithLine}
-                                    labelLine={false}
-                                    {...animationProps}
-                                >
-                                    {processedPieData.map((entry: any, index: number) => (
-                                        <Cell
-                                            key={`cell-${index}`}
-                                            fill={getFieldColor(entry[xAxisKey] || String(index), index)}
-                                            stroke="#fff"
-                                            strokeWidth={2}
-                                            style={{ outline: 'none' }}
-                                        />
-                                    ))}
-                                </Pie>
-                            )}
-                        </PieChart>
-                    </ResponsiveContainer>
+                                        ))}
+                                    </Pie>
+                                )}
+                            </PieChart>
+                        </ResponsiveContainer>
+                        {/* Center Content for Donut */}
+                        {isDonut && (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                <span className="text-xl sm:text-2xl font-bold text-[#0F172A] dark:text-white">
+                                    {totalValue.toLocaleString()}
+                                </span>
+                                <span className="text-xs text-[#64748B] uppercase tracking-wider font-medium">
+                                    Total
+                                </span>
+                            </div>
+                        )}
+                    </div>
                 );
 
             case "map":
@@ -938,7 +964,7 @@ export function DynamicChart({
 
             case "radar":
                 return (
-                    <ResponsiveContainer width="100%" height={height}>
+                    <ResponsiveContainer width="100%" height={chartHeight} className="min-h-[200px]">
                         <RadarChart
                             data={filteredData}
                             onClick={(e) => e?.activePayload?.[0]?.payload && handleChartClick(e.activePayload[0].payload)}
@@ -970,7 +996,7 @@ export function DynamicChart({
 
             case "scatter":
                 return (
-                    <ResponsiveContainer width="100%" height={height}>
+                    <ResponsiveContainer width="100%" height={chartHeight} className="min-h-[200px]">
                         <ScatterChart
                             margin={{ top: 10, right: 10, bottom: 10, left: 10 }}
                             onClick={(e) => e?.activePayload?.[0]?.payload && handleChartClick(e.activePayload[0].payload)}
@@ -1006,7 +1032,7 @@ export function DynamicChart({
 
             case "composed":
                 return (
-                    <ResponsiveContainer width="100%" height={height}>
+                    <ResponsiveContainer width="100%" height={chartHeight} className="min-h-[200px]">
                         <ComposedChart
                             data={filteredData}
                             margin={{ top: 10, right: 10, bottom: 10, left: 10 }}
@@ -1139,7 +1165,7 @@ export function DynamicChart({
                 }));
 
                 return (
-                    <ResponsiveContainer width="100%" height={height}>
+                    <ResponsiveContainer width="100%" height={chartHeight} className="min-h-[200px]">
                         <FunnelChart style={clickableCursor}>
                             {style?.showTooltip && <Tooltip content={<TooltipComponent />} />}
                             {style?.showLegend && <Legend content={renderLegend()} />}
@@ -1179,6 +1205,53 @@ export function DynamicChart({
                             icon={HexIcon ? React.createElement(HexIcon as any, { className: "w-6 h-6" }) : undefined}
                         />
                     </div>
+                );
+
+            case "gauge":
+                const gaugeYField = dataSource?.yAxis?.[0] || 'value';
+                const gaugeValue = Number(filteredData[0]?.[gaugeYField] || 0);
+                // Default max is 100 for percentage, or find max from data if needed
+                const gaugeMax = 100;
+                const gaugePercent = Math.min(100, Math.max(0, gaugeValue));
+
+                const gaugeChartData = [
+                    { name: 'Completed', value: gaugePercent },
+                    { name: 'Remaining', value: 100 - gaugePercent }
+                ];
+
+                return (
+                    <ResponsiveContainer width="100%" height={chartHeight} className="min-h-[200px]">
+                        <PieChart>
+                            <defs>
+                                <linearGradient id="gaugeGradient" x1="0" y1="0" x2="1" y2="0">
+                                    <stop offset="0%" stopColor={colors[0]} />
+                                    <stop offset="100%" stopColor={colors[1] || colors[0]} />
+                                </linearGradient>
+                            </defs>
+                            <Pie
+                                data={gaugeChartData}
+                                cx="50%"
+                                cy="70%"
+                                startAngle={180}
+                                endAngle={0}
+                                innerRadius="75%"
+                                outerRadius="100%"
+                                paddingAngle={0}
+                                dataKey="value"
+                                stroke="none"
+                                cornerRadius={10}
+                            >
+                                <Cell fill="url(#gaugeGradient)" />
+                                <Cell fill="#F1F5F9" />
+                            </Pie>
+                            <text x="50%" y="65%" textAnchor="middle" dominantBaseline="central" className="text-3xl font-bold fill-slate-900 dark:fill-white">
+                                {gaugeValue}%
+                            </text>
+                            <text x="50%" y="80%" textAnchor="middle" className="text-sm fill-slate-500 font-medium">
+                                {style?.title || getLabel(gaugeYField)}
+                            </text>
+                        </PieChart>
+                    </ResponsiveContainer>
                 );
 
             case "statCard":
@@ -1230,20 +1303,6 @@ export function DynamicChart({
                 >
                     {style.title}
                 </h3>
-            )}
-
-            {/* Chart Filter */}
-            {enableFilter && (
-                <div className="absolute top-2 right-2 z-10">
-                <FilterBuilder
-                    data={data}
-                    availableFields={availableFields}
-                    filters={chartFilters}
-                    onChange={handleFilterChange}
-                    onApplyFilters={() => {}}
-                    className="shadow-lg"
-                />
-                </div>
             )}
 
             {renderChart()}

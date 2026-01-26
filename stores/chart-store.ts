@@ -22,7 +22,7 @@ interface ChartState {
     // Actions
     setCharts: (charts: ChartConfig[]) => void;
     saveChart: (chart: ChartConfig) => void;
-    deleteChart: (id: string) => void;
+    deleteChart: (id: string) => Promise<boolean>;
     getChart: (id: string) => ChartConfig | undefined;
 
     // Designer Actions
@@ -91,10 +91,24 @@ export const useChartStore = create<ChartState>()(
                 }
             },
 
-            deleteChart: (id) => {
-                set((state) => ({
-                    charts: state.charts.filter((c) => c.id !== id),
-                }));
+            deleteChart: async (id) => {
+                try {
+                    const response = await fetch(`/api/charts/${id}`, {
+                        method: 'DELETE',
+                    });
+                    const result = await response.json();
+
+                    if (result.success) {
+                        set((state) => ({
+                            charts: state.charts.filter((c) => c.id !== id),
+                        }));
+                        return true;
+                    }
+                    return false;
+                } catch (error) {
+                    console.error("Error deleting chart:", error);
+                    return false;
+                }
             },
 
             getChart: (id) => {

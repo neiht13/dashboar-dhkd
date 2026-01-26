@@ -1,0 +1,38 @@
+{
+    "version": 8,
+    "name": "Google Roadmap",
+    "metadata": {
+        "mapbox:autocomposite": false,
+        "mapbox:type": "template"
+    },
+    "sources": {
+        "google-roadmap": {
+            "type": "raster",
+            "tiles": [
+                "https://mt0.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
+                "https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
+                "https://mt2.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
+                "https://mt3.google.com/vt/lyrs=m&x={x}&y={y}&z={z}"
+            ],
+            "tileSize": 256,
+            "attribution": "© Google Maps"
+        }
+    },
+    "glyphs": "https://tiles.basemaps.cartocdn.com/fonts/{fontstack}/{range}.pbf",
+    "layers": [
+        {
+            "id": "background",
+            "type": "background",
+            "paint": {
+                "background-color": "#f8f9fa"
+            }
+        },
+        {
+            "id": "google-roadmap-tiles",
+            "type": "raster",
+            "source": "google-roadmap",
+            "minzoom": 0,
+            "maxzoom": 22
+        }
+    ]
+}

@@ -2,10 +2,27 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus, MoreVertical, Calendar, Users, BarChart3, RefreshCw, Loader2, Database } from "lucide-react";
-import { Header } from "@/components/layout/Header";
+import { Plus, MoreVertical, Calendar, Users, BarChart3, RefreshCw, Loader2, Database, Trash2, Edit } from "lucide-react";
+import { DashboardSkeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useDashboardStore } from "@/stores/dashboard-store";
 import type { Dashboard } from "@/types";
 
@@ -79,32 +96,6 @@ export default function DashboardsPage() {
 
     return (
         <>
-            <Header
-                title="Bảng điều khiển"
-                subtitle="Quản lý"
-                showDatePicker={false}
-                actions={
-                    <div className="flex items-center gap-2">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={fetchDashboards}
-                            disabled={isLoading}
-                            className="gap-2"
-                        >
-                            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-                            Làm mới
-                        </Button>
-                        <Link href="/builder/new">
-                            <Button className="gap-2">
-                                <Plus className="h-4 w-4" />
-                                Tạo Dashboard
-                            </Button>
-                        </Link>
-                    </div>
-                }
-            />
-
             <div className="flex-1 overflow-y-auto p-6">
                 <div className="max-w-[1400px] mx-auto">
                     {/* Stats Overview */}
@@ -158,10 +149,7 @@ export default function DashboardsPage() {
 
                     {/* Loading State */}
                     {isLoading && dashboards.length === 0 && (
-                        <div className="flex flex-col items-center justify-center py-20">
-                            <Loader2 className="h-10 w-10 animate-spin text-[#0052CC] mb-4" />
-                            <p className="text-[#64748B]">Đang tải danh sách dashboard...</p>
-                        </div>
+                        <DashboardSkeleton />
                     )}
 
                     {/* Error State */}
@@ -205,14 +193,61 @@ export default function DashboardsPage() {
                                                         {dashboard.description || "Không có mô tả"}
                                                     </CardDescription>
                                                 </div>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-8 w-8 -mr-2"
-                                                    onClick={(e) => e.preventDefault()}
-                                                >
-                                                    <MoreVertical className="h-4 w-4" />
-                                                </Button>
+                                                <div onClick={(e) => e.preventDefault()}>
+                                                    <AlertDialog>
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-8 w-8 -mr-2"
+                                                                >
+                                                                    <MoreVertical className="h-4 w-4" />
+                                                                </Button>
+                                                            </DropdownMenuTrigger>
+                                                            <DropdownMenuContent align="end">
+                                                                <Link href={`/builder/${dashboard.id}`}>
+                                                                    <DropdownMenuItem>
+                                                                        <Edit className="mr-2 h-4 w-4" />
+                                                                        Chỉnh sửa
+                                                                    </DropdownMenuItem>
+                                                                </Link>
+                                                                <AlertDialogTrigger asChild>
+                                                                    <DropdownMenuItem className="text-red-600 focus:text-red-600">
+                                                                        <Trash2 className="mr-2 h-4 w-4" />
+                                                                        Xóa Dashboard
+                                                                    </DropdownMenuItem>
+                                                                </AlertDialogTrigger>
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
+
+                                                        <AlertDialogContent>
+                                                            <AlertDialogHeader>
+                                                                <AlertDialogTitle>Xóa dashboard này?</AlertDialogTitle>
+                                                                <AlertDialogDescription>
+                                                                    Hành động này không thể hoàn tác. Dashboard "{dashboard.name}" và tất cả cấu hình của nó sẽ bị xóa vĩnh viễn.
+                                                                </AlertDialogDescription>
+                                                            </AlertDialogHeader>
+                                                            <AlertDialogFooter>
+                                                                <AlertDialogCancel>Hủy</AlertDialogCancel>
+                                                                <AlertDialogAction
+                                                                    className="bg-red-600 hover:bg-red-700"
+                                                                    onClick={async (e) => {
+                                                                        e.preventDefault();
+                                                                        const { deleteDashboard } = useDashboardStore.getState();
+                                                                        const success = await deleteDashboard(dashboard.id);
+                                                                        if (success) {
+                                                                            // Ideally we should refresh or the store update will handle it
+                                                                            // remove from local list manually if store doesn't trigger re-render of separate instances effectively (but it should)
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    Xóa vĩnh viễn
+                                                                </AlertDialogAction>
+                                                            </AlertDialogFooter>
+                                                        </AlertDialogContent>
+                                                    </AlertDialog>
+                                                </div>
                                             </div>
                                         </CardHeader>
                                         <CardContent>
@@ -233,7 +268,8 @@ export default function DashboardsPage() {
                                         </CardContent>
                                     </Card>
                                 </Link>
-                            ))}
+                            ))
+                            }
 
                             {/* Create New Dashboard Card */}
                             <Link href="/builder/new">
@@ -251,10 +287,10 @@ export default function DashboardsPage() {
                                     </CardContent>
                                 </Card>
                             </Link>
-                        </div>
+                        </div >
                     )}
-                </div>
-            </div>
+                </div >
+            </div >
         </>
     );
 }

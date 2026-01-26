@@ -2,19 +2,37 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
 
-// JWT Secret - MUST be set via environment variables in production
-const JWT_SECRET_STRING = process.env.JWT_SECRET || process.env.BETTER_AUTH_SECRET;
-
-if (!JWT_SECRET_STRING && process.env.NODE_ENV === 'production') {
-    throw new Error(
-        'Please define JWT_SECRET environment variable in production.\n' +
-        'See .env.example for reference.'
-    );
+// Get JWT secret from environment - REQUIRED in production
+function getJWTSecret(): Uint8Array {
+    const secret = process.env.JWT_SECRET || process.env.BETTER_AUTH_SECRET;
+    
+    if (!secret) {
+        if (process.env.NODE_ENV === 'production') {
+            throw new Error(
+                'JWT_SECRET or BETTER_AUTH_SECRET environment variable is required in production. ' +
+                'Please set it in your environment configuration.'
+            );
+        }
+        // Only allow fallback in development
+        console.warn(
+            '⚠️  WARNING: JWT_SECRET not set. Using fallback secret. ' +
+            'This should NEVER be used in production!'
+        );
+        return new TextEncoder().encode('DEV-SECRET-ONLY-DO-NOT-USE-IN-PRODUCTION');
+    }
+    
+    // Validate secret length (minimum 32 characters for security)
+    if (secret.length < 32) {
+        throw new Error(
+            'JWT_SECRET must be at least 32 characters long for security. ' +
+            `Current length: ${secret.length}`
+        );
+    }
+    
+    return new TextEncoder().encode(secret);
 }
 
-const JWT_SECRET = new TextEncoder().encode(
-    JWT_SECRET_STRING || 'dev-secret-change-in-production'
-);
+const JWT_SECRET = getJWTSecret();
 
 const protectedRoutes = [
     '/builder',

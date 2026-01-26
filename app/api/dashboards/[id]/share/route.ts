@@ -116,7 +116,7 @@ export async function POST(request: Request, { params }: RouteParams) {
         }
 
         const body = await request.json();
-        const { permission = 'view', expiresIn, maxViews } = body;
+        const { permission = 'view', expiresIn, maxViews, type = 'public', allowedDomains } = body;
 
         // Calculate expiration date
         let expiresAt: Date | undefined;
@@ -134,9 +134,15 @@ export async function POST(request: Request, { params }: RouteParams) {
         // Generate unique token
         const token = crypto.randomBytes(32).toString('hex');
 
+        // Generate secret key for JWT type
+        const secretKey = type === 'jwt' ? crypto.randomBytes(32).toString('hex') : undefined;
+
         const shareLink = await ShareLink.create({
             dashboardId: id,
             token,
+            type,
+            secretKey,
+            allowedDomains: allowedDomains || [],
             permission,
             expiresAt,
             maxViews: maxViews || undefined,

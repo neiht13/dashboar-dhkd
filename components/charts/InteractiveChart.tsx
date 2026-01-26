@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { DynamicChart } from './DynamicChart';
+// Use lazy-loaded DynamicChart to reduce bundle size
+import { DynamicChart } from './DynamicChart.lazy';
 import { useCrossFilter } from './CrossFilterProvider';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -224,28 +225,29 @@ export function InteractiveChart({
 
     // Render chart with drill-down UI
     return (
-        <div className="flex flex-col h-full">
-            {/* Drill-down breadcrumb navigation */}
+        <div className="flex flex-col h-full w-full overflow-hidden">
+            {/* Drill-down breadcrumb navigation - Responsive */}
             {drillPath.length > 0 && (
-                <div className="flex items-center gap-1 px-3 py-1.5 border-b bg-slate-50 dark:bg-slate-900 flex-wrap text-sm">
+                <div className="flex items-center gap-1 px-2 sm:px-3 py-1.5 border-b bg-slate-50 dark:bg-slate-900 flex-wrap text-xs sm:text-sm">
                     <Button
                         variant="ghost"
                         size="sm"
-                        className="h-6 px-2 text-xs"
+                        className="h-7 sm:h-6 px-2 text-xs touch-manipulation"
                         onClick={handleReset}
                         disabled={isLoading}
                     >
-                        <Home className="h-3 w-3 mr-1" />
-                        Tổng quan
+                        <Home className="h-3.5 w-3.5 sm:h-3 sm:w-3 mr-1" />
+                        <span className="hidden sm:inline">Tổng quan</span>
+                        <span className="sm:hidden">Trang chủ</span>
                     </Button>
 
-                    {drillPath.map((level, index) => (
-                        <React.Fragment key={index}>
-                            <ChevronRight className="h-3 w-3 text-muted-foreground" />
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 px-2 text-xs font-medium"
+                            {drillPath.map((level, index) => (
+                                <React.Fragment key={index}>
+                                    <ChevronRight className="h-3.5 w-3.5 sm:h-3 sm:w-3 text-muted-foreground" />
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 sm:h-6 px-2 text-xs font-medium touch-manipulation"
                                 onClick={() => handleDrillUp(index + 1)}
                                 disabled={isLoading}
                             >
@@ -354,8 +356,6 @@ export function InteractiveChart({
                     enableDrillDown={canDrillDown && !isLoading}
                     enableCrossFilter={enableCrossFilter && drillPath.length === 0}
                     chartId={chartId}
-                    enableFilter={true}
-                    onFilterChange={() => {}} // Handle filter changes if needed
                 />
             </div>
         </div>

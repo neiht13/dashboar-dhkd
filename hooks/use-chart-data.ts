@@ -50,9 +50,13 @@ export function useChartData(params: ChartDataParams) {
         {
             revalidateOnFocus: false,
             revalidateOnReconnect: false,
-            dedupingInterval: 60000, // 1 minute
+            dedupingInterval: 300000, // 5 minutes - increased cache time
             errorRetryCount: 3,
             errorRetryInterval: 5000,
+            // Cache for 5 minutes
+            refreshInterval: 0, // Disable auto-refresh, use manual refresh
+            // Keep previous data while revalidating
+            keepPreviousData: true,
         }
     );
 

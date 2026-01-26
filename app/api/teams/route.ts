@@ -8,7 +8,7 @@ const JWT_SECRET = new TextEncoder().encode(
 );
 
 async function getUserFromToken(request: NextRequest) {
-    const token = request.cookies.get('auth-token')?.value;
+    const token = request.cookies.get('auth_token')?.value;
     if (!token) return null;
 
     try {
@@ -74,10 +74,10 @@ export async function GET(request: NextRequest) {
                 ownerId: team.ownerId?.toString(),
                 owner: team.owner
                     ? {
-                          _id: team.owner._id?.toString(),
-                          name: team.owner.name,
-                          email: team.owner.email,
-                      }
+                        _id: team.owner._id?.toString(),
+                        name: team.owner.name,
+                        email: team.owner.email,
+                    }
                     : null,
                 members: team.members?.map((m: { userId: ObjectId; role: string; joinedAt: Date }) => ({
                     ...m,

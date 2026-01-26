@@ -8,7 +8,7 @@ const JWT_SECRET = new TextEncoder().encode(
 );
 
 async function getUserFromToken(request: NextRequest) {
-    const token = request.cookies.get('auth-token')?.value;
+    const token = request.cookies.get('auth_token')?.value;
     if (!token) return null;
 
     try {
@@ -89,15 +89,15 @@ export async function GET(request: NextRequest) {
                 createdBy: alert.createdBy?.toString(),
                 dashboard: alert.dashboard
                     ? {
-                          _id: alert.dashboard._id?.toString(),
-                          name: alert.dashboard.name,
-                      }
+                        _id: alert.dashboard._id?.toString(),
+                        name: alert.dashboard.name,
+                    }
                     : null,
                 connection: alert.connection
                     ? {
-                          _id: alert.connection._id?.toString(),
-                          name: alert.connection.name,
-                      }
+                        _id: alert.connection._id?.toString(),
+                        name: alert.connection.name,
+                    }
                     : null,
                 recipients: {
                     ...alert.recipients,

@@ -13,7 +13,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 // Use require or import to load JSON.
-import geoData from '@/lib/TTVT_polygon.json';
+import geoDataTTVT from '@/lib/TTVT_polygon.json';
+import geoDataPhuongXa from '@/lib/DongThap_PhuongXa.json';
+
+// Region types
+type RegionType = 'ttvt' | 'phuong_xa';
 
 interface MapChartProps {
     data: any[];
@@ -87,11 +91,11 @@ const FilterPanel = ({
                 </p>
             </div>
 
-            {/* Y-Axis Filter - Layer Types */}
+            {/* Y-Axis Filter - Data Layers */}
             <div className="p-3 flex-1 overflow-hidden flex flex-col">
                 <div className="flex items-center gap-2 mb-3">
                     <Layers className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span className="font-semibold text-sm text-slate-700 dark:text-slate-200">LOẠI THUÊ BAO</span>
+                    <span className="font-semibold text-sm text-slate-700 dark:text-slate-200">LỚP DỮ LIỆU</span>
                 </div>
                 <ScrollArea className="flex-1 -mx-1 px-1">
                     <div className="space-y-2">
@@ -104,24 +108,26 @@ const FilterPanel = ({
                             />
                             <span className="text-sm font-medium text-slate-700 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-1.5">
                                 <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-gradient-to-br from-blue-500 to-purple-500 text-white text-[10px] font-bold">
-                                    ⚡
+                                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                                 </span>
                                 Tất cả
                             </span>
                         </label>
 
-                        {/* Individual Layer Options */}
+                        {/* Individual Layer Options - Y-axis columns */}
                         {yAxisOptions.map((option, index) => {
-                            // Generate unique colors/icons for each layer type
+                            // Generate unique colors for each data layer
                             const layerColors = [
-                                { bg: 'bg-green-500', icon: 'F', label: 'Fiber' },
-                                { bg: 'bg-orange-500', icon: 'M', label: 'Mega' },
-                                { bg: 'bg-red-500', icon: 'M', label: 'MyTV' },
-                                { bg: 'bg-blue-500', icon: 'C', label: 'Cố định' },
-                                { bg: 'bg-yellow-500', icon: 'G', label: 'GPhone' },
-                                { bg: 'bg-pink-500', icon: 'S', label: 'DD trả sau' },
+                                'bg-blue-500',
+                                'bg-green-500',
+                                'bg-orange-500',
+                                'bg-red-500',
+                                'bg-purple-500',
+                                'bg-pink-500',
+                                'bg-yellow-500',
+                                'bg-cyan-500',
                             ];
-                            const colorConfig = layerColors[index % layerColors.length];
+                            const bgColor = layerColors[index % layerColors.length];
                             const iconLetter = option.label.charAt(0).toUpperCase();
 
                             return (
@@ -135,7 +141,7 @@ const FilterPanel = ({
                                         className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                                     />
                                     <span className="text-sm text-slate-600 dark:text-slate-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-1.5">
-                                        <span className={`inline-flex items-center justify-center w-5 h-5 rounded ${colorConfig.bg} text-white text-[10px] font-bold`}>
+                                        <span className={`inline-flex items-center justify-center w-5 h-5 rounded ${bgColor} text-white text-[10px] font-bold`}>
                                             {iconLetter}
                                         </span>
                                         {option.label}
@@ -147,30 +153,6 @@ const FilterPanel = ({
                 </ScrollArea>
             </div>
 
-            {/* Data Layer Section */}
-            {yAxisOptions.length > 0 && (
-                <div className="p-3 border-t border-slate-200 dark:border-slate-700">
-                    <div className="flex items-center gap-2 mb-2">
-                        <span className="font-semibold text-xs text-slate-500 dark:text-slate-400">LỚP DỮ LIỆU</span>
-                    </div>
-                    <div className="space-y-1.5">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                            <Checkbox defaultChecked className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600 h-3.5 w-3.5" />
-                            <span className="text-xs text-slate-600 dark:text-slate-300 flex items-center gap-1">
-                                <span className="inline-block w-4 h-2 bg-gradient-to-r from-red-500 via-yellow-500 to-green-500 rounded"></span>
-                                Thuê bao phát sinh cước
-                            </span>
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                            <Checkbox className="h-3.5 w-3.5" />
-                            <span className="text-xs text-slate-600 dark:text-slate-300 flex items-center gap-1">
-                                <span className="inline-block w-4 h-2 border-2 border-dashed border-red-400 rounded"></span>
-                                Kết cuối
-                            </span>
-                        </label>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };
@@ -209,8 +191,8 @@ const Legend = ({ items }: { items: { code: string; name: string; color: string 
             <div className="flex items-center gap-4">
                 {items.map((item) => (
                     <div key={item.code} className="flex items-center gap-1.5">
-                        <div 
-                            className="w-3 h-3 rounded-full flex-shrink-0 border border-white shadow-sm" 
+                        <div
+                            className="w-3 h-3 rounded-full flex-shrink-0 border border-white shadow-sm"
                             style={{ backgroundColor: item.color }}
                         ></div>
                         <span className="text-slate-600 dark:text-slate-300 whitespace-nowrap text-[11px] font-medium">
@@ -229,7 +211,7 @@ const MapMarkers = ({ data, config }: { data: any[], config: ChartConfig }) => {
     // Get unique TTVT locations
     const markers = React.useMemo(() => {
         const unique = new Map();
-        (geoData as any).features.forEach((f: any) => {
+        (geoDataTTVT as any).features.forEach((f: any) => {
             const code = f.attributes.ma_ttvt;
             if (!unique.has(code)) {
                 unique.set(code, {
@@ -251,7 +233,7 @@ const MapMarkers = ({ data, config }: { data: any[], config: ChartConfig }) => {
                 let rawValue = 0;
 
                 if (xAxisKey && yAxisKey) {
-                    const item = data.find(d => String(d[xAxisKey]).trim() === String(ttvt.ma_ttvt).trim());
+                    const item = data.find(d => String(d[xAxisKey]).trim().toLowerCase() === String(ttvt.ma_ttvt).trim().toLowerCase());
                     if (item) {
                         rawValue = Number(item[yAxisKey]);
                         valueDisplay = rawValue.toLocaleString();
@@ -259,9 +241,17 @@ const MapMarkers = ({ data, config }: { data: any[], config: ChartConfig }) => {
                 }
 
                 return (
-                    <MapMarker key={ttvt.ma_ttvt} longitude={ttvt.lng} latitude={ttvt.lat}>
+                    <MapMarker
+                        key={ttvt.ma_ttvt}
+                        longitude={ttvt.lng}
+                        latitude={ttvt.lat}
+                        onClick={(e) => e.stopPropagation()}
+                    >
                         <MarkerContent>
-                            <div className="size-4 rounded-full bg-rose-500 border-1 border-white shadow-lg cursor-pointer hover:scale-110 transition-transform flex items-center justify-center">
+                            <div
+                                className="size-4 rounded-full bg-rose-500 border-1 border-white shadow-lg cursor-pointer hover:scale-110 transition-transform flex items-center justify-center"
+                                onClick={(e) => e.stopPropagation()}
+                            >
                                 <Star className="size-3 text-white" />
                             </div>
                         </MarkerContent>
@@ -309,102 +299,182 @@ const MapMarkers = ({ data, config }: { data: any[], config: ChartConfig }) => {
     );
 };
 
-const MapLayers = ({ data, config, setLegendItems }: { data: any[], config: ChartConfig, setLegendItems: (items: { code: string; name: string; color: string }[]) => void }) => {
+const MapLayers = ({ data, config, setLegendItems, regionType }: { data: any[], config: ChartConfig, setLegendItems: (items: { code: string; name: string; color: string }[]) => void, regionType: RegionType }) => {
     const { map, isLoaded } = useMap();
     const { dataSource } = config;
     const [selectedCode, setSelectedCode] = useState<string | null>(null);
 
+    // Get the appropriate GeoJSON and field names based on regionType
+    const geoConfig = useMemo(() => {
+        if (regionType === 'phuong_xa') {
+            return {
+                geoData: geoDataPhuongXa,
+                codeField: 'ma_xa',
+                nameField: 'ten_xa',
+                groupField: 'tru_so', // Field linking to TTVT (khu vực)
+                sourceId: 'phuongxa-source',
+                labelsId: 'phuongxa-labels',
+                fillLayerId: 'phuongxa-fill',
+                lineLayerId: 'phuongxa-line',
+                symbolLayerId: 'phuongxa-symbol',
+                highlightFillId: 'phuongxa-highlight-fill',
+                highlight3dId: 'phuongxa-highlight-3d',
+                isGeoJSON: true // Already in GeoJSON format
+            };
+        }
+        return {
+            geoData: geoDataTTVT,
+            codeField: 'ma_ttvt',
+            nameField: 'ten_ttvt',
+            groupField: undefined, // TTVT doesn't have parent group
+            sourceId: 'ttvt-source',
+            labelsId: 'ttvt-labels',
+            fillLayerId: 'ttvt-fill',
+            lineLayerId: 'ttvt-line',
+            symbolLayerId: 'ttvt-symbol',
+            highlightFillId: 'ttvt-highlight-fill',
+            highlight3dId: 'ttvt-highlight-3d',
+            isGeoJSON: false // ESRI JSON format
+        };
+    }, [regionType]);
+
+    // Clean up layers when regionType changes
     useEffect(() => {
         if (!map || !isLoaded) return;
 
-        // Add Source
-        if (!map.getSource('ttvt-source')) {
-            // Transform ESRI JSON to GeoJSON
-            // ESRI JSON uses "rings" array where each ring can be a separate polygon part
-            // For features with multiple rings (e.g., island + mainland), use MultiPolygon
-            const features = (geoData as any).features.map((f: any) => {
-                const rings = f.geometry.rings;
+        // Remove old layers and sources
+        const layersToRemove = [
+            'ttvt-fill', 'ttvt-line', 'ttvt-symbol', 'ttvt-highlight', 'ttvt-highlight-fill', 'ttvt-highlight-3d',
+            'phuongxa-fill', 'phuongxa-line', 'phuongxa-symbol', 'phuongxa-highlight', 'phuongxa-highlight-fill', 'phuongxa-highlight-3d'
+        ];
+        const sourcesToRemove = ['ttvt-source', 'ttvt-labels', 'phuongxa-source', 'phuongxa-labels'];
 
-                // Each ring in ESRI JSON is a separate polygon (not holes in this dataset)
-                // Convert each ring to a polygon coordinate array (with reversed winding for GeoJSON)
-                const polygons = rings.map((ring: any[]) => [[...ring].reverse()]);
+        layersToRemove.forEach(layerId => {
+            if (map.getLayer(layerId)) {
+                map.removeLayer(layerId);
+            }
+        });
 
-                return {
-                    type: 'Feature',
-                    geometry: {
-                        type: 'MultiPolygon',
-                        coordinates: polygons
-                    },
-                    properties: {
-                        ...f.attributes,
-                        center_lng: f.attributes.truso_lng,
-                        center_lat: f.attributes.truso_lat
-                    }
-                };
-            });
+        sourcesToRemove.forEach(sourceId => {
+            if (map.getSource(sourceId)) {
+                map.removeSource(sourceId);
+            }
+        });
+    }, [map, isLoaded, regionType]);
 
-            // Create Point Features for Labels (Centroids) - show TTVT codes only
-            const labelFeatures = (geoData as any).features.map((f: any) => {
-                const code = f.attributes.ma_ttvt;
+    useEffect(() => {
+        if (!map || !isLoaded) return;
 
-                // Calculate centroid
-                const rings = f.geometry.rings;
-                // Assuming first ring is outer boundary and largest
-                // In production, might want to find the largest ring
-                let largestRing = rings[0];
-                let maxLen = 0;
-                rings.forEach((r: any[]) => {
-                    if (r.length > maxLen) {
-                        maxLen = r.length;
-                        largestRing = r;
-                    }
+        const { geoData, codeField, nameField, sourceId, labelsId, fillLayerId, lineLayerId, symbolLayerId, isGeoJSON } = geoConfig;
+
+        // Add Source if not exists
+        if (!map.getSource(sourceId)) {
+            let geoJsonData: any;
+            let labelGeoJsonData: any;
+
+            if (isGeoJSON) {
+                // Already in GeoJSON format (Phường/Xã)
+                geoJsonData = geoData;
+
+                // Create label features from GeoJSON
+                const labelFeatures = (geoData as any).features.map((f: any) => {
+                    // Calculate centroid from polygon
+                    const coords = f.geometry.type === 'Polygon'
+                        ? f.geometry.coordinates[0]
+                        : f.geometry.coordinates[0][0];
+                    const centroid = calculateCentroid(coords);
+
+                    return {
+                        type: 'Feature',
+                        geometry: {
+                            type: 'Point',
+                            coordinates: centroid
+                        },
+                        properties: {
+                            ...f.properties,
+                            description: f.properties[nameField] || f.properties[codeField]
+                        }
+                    };
                 });
 
-                // rings from ESRI are often clockwise? GeoJSON expects CCW for outer.
-                // Centroid calc doesn't care about winding for position, only area sign.
-                // We just need the coordinates.
-                const centroid = calculateCentroid(largestRing);
-
-                return {
-                    type: 'Feature',
-                    geometry: {
-                        type: 'Point',
-                        coordinates: centroid
-                    },
-                    properties: {
-                        ...f.attributes,
-                        description: f.attributes.ma_ttvt
-                    }
+                labelGeoJsonData = {
+                    type: 'FeatureCollection',
+                    features: labelFeatures
                 };
-            });
+            } else {
+                // Transform ESRI JSON to GeoJSON (TTVT)
+                const features = (geoData as any).features.map((f: any) => {
+                    const rings = f.geometry.rings;
+                    const polygons = rings.map((ring: any[]) => [[...ring].reverse()]);
 
-            const geoJsonData = {
-                type: 'FeatureCollection',
-                features: features
-            };
+                    return {
+                        type: 'Feature',
+                        geometry: {
+                            type: 'MultiPolygon',
+                            coordinates: polygons
+                        },
+                        properties: {
+                            ...f.attributes,
+                            center_lng: f.attributes.truso_lng,
+                            center_lat: f.attributes.truso_lat
+                        }
+                    };
+                });
 
-            const labelGeoJsonData = {
-                type: 'FeatureCollection',
-                features: labelFeatures
-            };
+                const labelFeatures = (geoData as any).features.map((f: any) => {
+                    const rings = f.geometry.rings;
+                    let largestRing = rings[0];
+                    let maxLen = 0;
+                    rings.forEach((r: any[]) => {
+                        if (r.length > maxLen) {
+                            maxLen = r.length;
+                            largestRing = r;
+                        }
+                    });
 
-            map.addSource('ttvt-source', {
+                    const centroid = calculateCentroid(largestRing);
+
+                    return {
+                        type: 'Feature',
+                        geometry: {
+                            type: 'Point',
+                            coordinates: centroid
+                        },
+                        properties: {
+                            ...f.attributes,
+                            description: f.attributes[codeField]
+                        }
+                    };
+                });
+
+                geoJsonData = {
+                    type: 'FeatureCollection',
+                    features: features
+                };
+
+                labelGeoJsonData = {
+                    type: 'FeatureCollection',
+                    features: labelFeatures
+                };
+            }
+
+            map.addSource(sourceId, {
                 type: 'geojson',
                 data: geoJsonData as any
             });
 
-            map.addSource('ttvt-labels', {
+            map.addSource(labelsId, {
                 type: 'geojson',
                 data: labelGeoJsonData as any
             });
         }
 
-        // Add Layer
-        if (!map.getLayer('ttvt-fill')) {
+        // Add Layers
+        if (!map.getLayer(fillLayerId)) {
             map.addLayer({
-                id: 'ttvt-fill',
+                id: fillLayerId,
                 type: 'fill',
-                source: 'ttvt-source',
+                source: sourceId,
                 paint: {
                     'fill-color': '#e2e8f0',
                     'fill-opacity': 0.8,
@@ -412,26 +482,24 @@ const MapLayers = ({ data, config, setLegendItems }: { data: any[], config: Char
                 }
             });
 
-            // Add hover effect
             map.addLayer({
-                id: 'ttvt-line',
+                id: lineLayerId,
                 type: 'line',
-                source: 'ttvt-source',
+                source: sourceId,
                 paint: {
                     'line-color': '#fff',
-                    'line-width': 1.5
+                    'line-width': regionType === 'phuong_xa' ? 0.5 : 1.5
                 }
             });
 
-            // Add Labels Layer
             map.addLayer({
-                id: 'ttvt-symbol',
+                id: symbolLayerId,
                 type: 'symbol',
-                source: 'ttvt-labels',
+                source: labelsId,
                 layout: {
                     'text-field': ['get', 'description'],
                     'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-                    'text-size': 11,
+                    'text-size': regionType === 'phuong_xa' ? 9 : 11,
                     'text-anchor': 'center',
                     'text-justify': 'center',
                     'text-offset': [0, 0],
@@ -451,13 +519,14 @@ const MapLayers = ({ data, config, setLegendItems }: { data: any[], config: Char
                 className: 'map-hover-popup'
             });
 
-            map.on('mousemove', 'ttvt-fill', (e) => {
+            map.on('mousemove', fillLayerId, (e) => {
                 map.getCanvas().style.cursor = 'pointer';
 
                 const feature = e.features?.[0];
                 if (feature) {
-                    const name = feature.properties?.ten_ttvt || feature.properties?.ma_ttvt;
-                    const code = feature.properties?.ma_ttvt;
+                    const name = feature.properties?.[nameField] || feature.properties?.[codeField];
+                    const code = feature.properties?.[codeField];
+                    const groupValue = geoConfig.groupField ? feature.properties?.[geoConfig.groupField] : null;
 
                     // Find data values for selected yAxis fields only
                     const xAxisKey = dataSource?.xAxis;
@@ -465,8 +534,13 @@ const MapLayers = ({ data, config, setLegendItems }: { data: any[], config: Char
                     let valueDisplay = '';
                     let totalValue = 0;
 
+                    // Show group (TTVT) if available (for Phường/Xã)
+                    if (groupValue) {
+                        valueDisplay = `<div style="font-size: 10px; color: #64748b; margin-bottom: 4px; display: flex; align-items: center; gap: 4px;"><svg style="width: 12px; height: 12px;" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg> Khu vực: <strong>${groupValue}</strong></div>`;
+                    }
+
                     if (xAxisKey && yAxisFields.length > 0 && code) {
-                        const item = data.find(d => String(d[xAxisKey]).trim() === String(code).trim());
+                        const item = data.find(d => String(d[xAxisKey]).trim().toLowerCase() === String(code).trim().toLowerCase());
                         if (item) {
                             // Calculate total for selected layers
                             yAxisFields.forEach(field => {
@@ -474,7 +548,7 @@ const MapLayers = ({ data, config, setLegendItems }: { data: any[], config: Char
                             });
 
                             // Show total first
-                            valueDisplay = `<div style="margin-top:4px; font-size: 12px; font-weight: 600; color: #2563eb; border-bottom: 1px dashed #e2e8f0; padding-bottom: 4px; margin-bottom: 4px;">Tổng: ${totalValue.toLocaleString()}</div>`;
+                            valueDisplay += `<div style="margin-top:4px; font-size: 12px; font-weight: 600; color: #2563eb; border-bottom: 1px dashed #e2e8f0; padding-bottom: 4px; margin-bottom: 4px;">Tổng: ${totalValue.toLocaleString()}</div>`;
 
                             // Show each selected yAxis field
                             valueDisplay += yAxisFields.map(field => {
@@ -487,7 +561,7 @@ const MapLayers = ({ data, config, setLegendItems }: { data: any[], config: Char
                                 </div>`;
                             }).join('');
                         } else {
-                            valueDisplay = `<div style="margin-top:2px; font-size: 12px; opacity: 0.7;">Không có dữ liệu</div>`;
+                            valueDisplay += `<div style="margin-top:2px; font-size: 12px; opacity: 0.7;">Không có dữ liệu</div>`;
                         }
                     }
 
@@ -502,151 +576,186 @@ const MapLayers = ({ data, config, setLegendItems }: { data: any[], config: Char
                 }
             });
 
-            map.on('mouseleave', 'ttvt-fill', () => {
+            map.on('mouseleave', fillLayerId, () => {
                 map.getCanvas().style.cursor = '';
                 popup.remove();
             });
         }
 
-    }, [map, isLoaded, dataSource, data, config.style?.yAxisLabel]);
+    }, [map, isLoaded, dataSource, data, config.style?.yAxisLabel, geoConfig, regionType]);
 
     // Assign colors based on yAxis data and update legend
     useEffect(() => {
-        if (!map || !isLoaded || !map.getLayer('ttvt-fill')) return;
+        const { geoData, codeField, fillLayerId, isGeoJSON, groupField } = geoConfig;
+
+        if (!map || !isLoaded || !map.getLayer(fillLayerId)) return;
 
         const yAxisFields = dataSource?.yAxis || [];
         const xAxisField = dataSource?.xAxis;
 
-        if (!xAxisField || yAxisFields.length === 0) return;
+        // Create color mapping based on region type
+        const matchExpression: any[] = ['match', ['get', codeField]];
+        let legendItems: { code: string; name: string; color: string }[] = [];
 
-        // Calculate total values for each region to determine color intensity
-        const regionTotals: { [key: string]: number } = {};
-        let maxTotal = 0;
-        let minTotal = Infinity;
-
-        data.forEach(item => {
-            const code = String(item[xAxisField]).trim();
-            let total = 0;
-            yAxisFields.forEach(field => {
-                total += Number(item[field] || 0);
+        // For Phường/Xã: Color by TTVT region (tru_so) to distinguish areas
+        if (isGeoJSON && groupField) {
+            // Get unique TTVT regions
+            const ttvtRegions = new Set<string>();
+            (geoData as any).features.forEach((f: any) => {
+                const ttvt = f.properties[groupField];
+                if (ttvt) ttvtRegions.add(String(ttvt));
             });
-            regionTotals[code] = total;
-            if (total > maxTotal) maxTotal = total;
-            if (total < minTotal && total > 0) minTotal = total;
-        });
 
-        // Define color thresholds for heatmap-style coloring
-        // Low (orange/red) -> Medium (yellow) -> High (green)
-        const getColorByValue = (value: number): string => {
-            if (maxTotal === 0) return '#e2e8f0';
-            const ratio = (value - minTotal) / (maxTotal - minTotal || 1);
-            
-            if (ratio < 0.33) {
-                return '#f97316'; // Orange - Low (Vùng tỉ lệ thấp)
-            } else if (ratio < 0.66) {
-                return '#facc15'; // Yellow - Medium (Vùng tỉ lệ trung bình)
-            } else {
-                return '#22c55e'; // Green - High (Vùng tỉ lệ cao)
-            }
-        };
+            // Create color mapping for each TTVT region
+            const ttvtColorMap: { [key: string]: string } = {};
+            const sortedTTVTs = Array.from(ttvtRegions).sort();
+            sortedTTVTs.forEach((ttvt, index) => {
+                ttvtColorMap[ttvt.toLowerCase()] = COLORS[index % COLORS.length];
+            });
 
-        // Create legend items for value ranges (like the reference image)
-        const legendItems: { code: string; name: string; color: string }[] = [
-            { code: 'low', name: 'Vùng tỉ lệ thấp', color: '#f97316' },
-            { code: 'medium', name: 'Vùng tỉ lệ trung bình', color: '#facc15' },
-            { code: 'high', name: 'Vùng tỉ lệ cao', color: '#22c55e' }
-        ];
+            // Assign colors to each Phường/Xã based on their TTVT region
+            (geoData as any).features.forEach((f: any) => {
+                const code = f.properties[codeField];
+                const ttvt = f.properties[groupField];
+                const color = ttvtColorMap[String(ttvt).toLowerCase()] || '#e2e8f0';
+                matchExpression.push(code, color);
+            });
 
-        // Create color mapping for TTVT units based on their total values
-        const matchExpression: any[] = ['match', ['get', 'ma_ttvt']];
+            // Create legend items for TTVT regions
+            legendItems = sortedTTVTs.map((ttvt, index) => ({
+                code: ttvt,
+                name: ttvt,
+                color: COLORS[index % COLORS.length]
+            }));
+        } else {
+            // For TTVT: Color by data value (heatmap style)
+            if (!xAxisField || yAxisFields.length === 0) return;
 
-        // Assign colors to each TTVT unit based on their data values
-        (geoData as any).features.forEach((f: any) => {
-            const code = f.attributes.ma_ttvt;
-            const total = regionTotals[code] || 0;
-            const color = getColorByValue(total);
+            // Calculate total values for each region to determine color intensity
+            const regionTotals: { [key: string]: number } = {};
+            let maxTotal = 0;
+            let minTotal = Infinity;
 
-            matchExpression.push(code, color);
-        });
+            data.forEach(item => {
+                // Use lowercase for case-insensitive matching
+                const code = String(item[xAxisField]).trim().toLowerCase();
+                let total = 0;
+                yAxisFields.forEach(field => {
+                    total += Number(item[field] || 0);
+                });
+                regionTotals[code] = total;
+                if (total > maxTotal) maxTotal = total;
+                if (total < minTotal && total > 0) minTotal = total;
+            });
+
+            // Define color thresholds for heatmap-style coloring
+            // Low (orange/red) -> Medium (yellow) -> High (green)
+            const getColorByValue = (value: number): string => {
+                if (maxTotal === 0) return '#e2e8f0';
+                const ratio = (value - minTotal) / (maxTotal - minTotal || 1);
+
+                if (ratio < 0.33) {
+                    return '#f97316'; // Orange - Low (Vùng tỉ lệ thấp)
+                } else if (ratio < 0.66) {
+                    return '#facc15'; // Yellow - Medium (Vùng tỉ lệ trung bình)
+                } else {
+                    return '#22c55e'; // Green - High (Vùng tỉ lệ cao)
+                }
+            };
+
+            // Assign colors to each TTVT based on their data values
+            (geoData as any).features.forEach((f: any) => {
+                const code = f.attributes[codeField];
+                // Use lowercase for case-insensitive lookup
+                const total = regionTotals[String(code).toLowerCase()] || 0;
+                const color = getColorByValue(total);
+                matchExpression.push(code, color);
+            });
+
+            // Create legend items for value ranges (like the reference image)
+            legendItems = [
+                { code: 'low', name: 'Vùng tỉ lệ thấp', color: '#f97316' },
+                { code: 'medium', name: 'Vùng tỉ lệ trung bình', color: '#facc15' },
+                { code: 'high', name: 'Vùng tỉ lệ cao', color: '#22c55e' }
+            ];
+        }
 
         matchExpression.push('#e2e8f0'); // Default fallback
 
         // Apply colors to map
-        map.setPaintProperty('ttvt-fill', 'fill-color', matchExpression);
+        map.setPaintProperty(fillLayerId, 'fill-color', matchExpression);
 
         // Update legend
         setLegendItems(legendItems);
 
-    }, [map, isLoaded, dataSource, data, config.style?.mapColorScheme, config.style?.mapDisplayMode, setLegendItems]);
+    }, [map, isLoaded, dataSource, data, config.style?.mapColorScheme, config.style?.mapDisplayMode, setLegendItems, geoConfig, regionType]);
 
     // Add highlight layer and click handler
     useEffect(() => {
         if (!map || !isLoaded) return;
 
-        // Add highlight layer if not exists
-        if (!map.getLayer('ttvt-highlight')) {
-            map.addLayer({
-                id: 'ttvt-highlight',
-                type: 'line',
-                source: 'ttvt-source',
-                paint: {
-                    'line-color': '#facc15',
-                    'line-width': 4
-                },
-                filter: ['==', ['get', 'ma_ttvt'], ''] // Initially hide
-            });
-        }
+        const { codeField, nameField, sourceId, fillLayerId, highlightFillId, highlight3dId } = geoConfig;
 
-        // Click handler - highlight all polygons with same ma_ttvt
+        // Click handler - highlight all polygons with same code
         const handleClick = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
             const feature = e.features?.[0];
-            if (feature?.properties?.ma_ttvt) {
-                const clickedCode = feature.properties.ma_ttvt;
+            const clickedCode = feature?.properties?.[codeField];
 
+            if (clickedCode) {
                 // Update selected code for highlight
                 setSelectedCode(clickedCode);
 
                 // Update fill color for highlight effect
-                if (!map.getLayer('ttvt-highlight-fill')) {
+                // Get the symbol layer ID to insert highlight layers BEFORE it (so labels stay on top)
+                const { symbolLayerId } = geoConfig;
+
+                if (!map.getLayer(highlightFillId)) {
+                    // Add highlight fill layer BEFORE the symbol layer so labels are not covered
                     map.addLayer({
-                        id: 'ttvt-highlight-fill',
+                        id: highlightFillId,
                         type: 'fill',
-                        source: 'ttvt-source',
+                        source: sourceId,
                         paint: {
                             'fill-color': 'tomato',
                             'fill-opacity': 0.7,
                             'fill-outline-color': '#ff6347'
                         },
-                        filter: ['==', ['get', 'ma_ttvt'], clickedCode]
-                    });
+                        filter: ['==', ['get', codeField], clickedCode]
+                    }, symbolLayerId); // Insert BEFORE symbol layer
 
-                    // Add 3D extrusion effect (simulated with line width)
+                    // Add 3D extrusion effect (simulated with line width) - also before symbol layer
                     map.addLayer({
-                        id: 'ttvt-highlight-3d',
+                        id: highlight3dId,
                         type: 'line',
-                        source: 'ttvt-source',
+                        source: sourceId,
                         paint: {
                             'line-color': '#ff6347',
                             'line-width': 3,
                             'line-opacity': 0.8
                         },
-                        filter: ['==', ['get', 'ma_ttvt'], clickedCode]
-                    });
+                        filter: ['==', ['get', codeField], clickedCode]
+                    }, symbolLayerId); // Insert BEFORE symbol layer
                 } else {
                     // Update existing highlight layers
-                    map.setFilter('ttvt-highlight-fill', ['==', ['get', 'ma_ttvt'], clickedCode]);
-                    map.setFilter('ttvt-highlight-3d', ['==', ['get', 'ma_ttvt'], clickedCode]);
+                    map.setFilter(highlightFillId, ['==', ['get', codeField], clickedCode]);
+                    map.setFilter(highlight3dId, ['==', ['get', codeField], clickedCode]);
                 }
 
                 // Add click popup
-                const name = feature.properties?.ten_ttvt || feature.properties?.ma_ttvt;
+                const name = feature?.properties?.[nameField] || feature?.properties?.[codeField];
+                const groupValue = geoConfig.groupField ? feature?.properties?.[geoConfig.groupField] : null;
                 const xAxisKey = dataSource?.xAxis;
                 const yAxisFields = dataSource?.yAxis || [];
                 let valueDisplay = '';
                 let totalValue = 0;
 
+                // Show group (TTVT) if available (for Phường/Xã)
+                if (groupValue) {
+                    valueDisplay = `<div style="font-size: 11px; color: #64748b; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px dashed #e2e8f0; display: flex; align-items: center; gap: 4px;"><svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg> Thuộc khu vực: <strong style="color: #0f172a;">${groupValue}</strong></div>`;
+                }
+
                 if (xAxisKey && yAxisFields.length > 0) {
-                    const item = data.find(d => String(d[xAxisKey]).trim() === String(clickedCode).trim());
+                    const item = data.find(d => String(d[xAxisKey]).trim().toLowerCase() === String(clickedCode).trim().toLowerCase());
                     if (item) {
                         // Calculate total for selected layers
                         yAxisFields.forEach(field => {
@@ -654,7 +763,7 @@ const MapLayers = ({ data, config, setLegendItems }: { data: any[], config: Char
                         });
 
                         // Show total first
-                        valueDisplay = `<div style="margin-top:4px; font-size: 13px; font-weight: 700; color: tomato; border-bottom: 2px dashed #fecaca; padding-bottom: 6px; margin-bottom: 6px;">
+                        valueDisplay += `<div style="margin-top:4px; font-size: 13px; font-weight: 700; color: tomato; border-bottom: 2px dashed #fecaca; padding-bottom: 6px; margin-bottom: 6px;">
                             Tổng cộng: ${totalValue.toLocaleString()}
                         </div>`;
 
@@ -671,26 +780,57 @@ const MapLayers = ({ data, config, setLegendItems }: { data: any[], config: Char
                     }
                 }
 
-                const clickPopup = new maplibregl.Popup()
-                    .setLngLat(e.lngLat)
-                    .setHTML(`<div style="background: rgba(255, 255, 255, 0.98); backdrop-filter: blur(10px); border: 2px solid tomato; border-radius: 8px; padding: 12px; color: #0f172a; min-width: 200px; box-shadow: 0 6px 20px rgba(255, 99, 71, 0.3);">
-                             <div style="font-weight: bold; font-size: 14px; border-bottom: 2px solid tomato; padding-bottom: 4px; margin-bottom: 4px; color: tomato;">${name}</div>
-                             ${valueDisplay}
-                             <div style="margin-top: 8px; font-size: 10px; color: #94a3b8; text-align: center;">Đã chọn khu vực này</div>
-                         </div>`)
-                    .addTo(map);
+                // Show click popup for both region types with appropriate styling
+                if (regionType === 'ttvt') {
+                    // For TTVT: Show styled popup similar to marker popup (trụ sở style)
+                    const clickPopup = new maplibregl.Popup({
+                        closeButton: true,
+                        closeOnClick: true,
+                        maxWidth: '280px'
+                    })
+                        .setLngLat(e.lngLat)
+                        .setHTML(`<div style="background: white; border-radius: 8px; overflow: hidden; min-width: 240px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);">
+                            <div style="background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%); padding: 16px; display: flex; align-items: center; justify-content: center;">
+                                <svg style="width: 40px; height: 40px; color: #94a3b8;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
+                            </div>
+                            <div style="padding: 12px;">
+                                <div style="font-size: 10px; font-weight: 500; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Đơn vị</div>
+                                <div style="font-size: 14px; font-weight: 600; color: #0f172a; margin-top: 2px;">${name}</div>
+                                ${valueDisplay ? `<div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #e2e8f0;">${valueDisplay}</div>` : ''}
+                                <div style="display: flex; gap: 8px; margin-top: 12px;">
+                                    <div style="flex: 1; background: #3b82f6; color: white; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; text-align: center; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;">
+                                        <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg> Chỉ đường
+                                    </div>
+                                    <div style="background: #f1f5f9; border: 1px solid #e2e8f0; padding: 8px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                                        <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>`)
+                        .addTo(map);
+                } else {
+                    // For phuong_xa: Show highlight style popup
+                    const clickPopup = new maplibregl.Popup()
+                        .setLngLat(e.lngLat)
+                        .setHTML(`<div style="background: rgba(255, 255, 255, 0.98); backdrop-filter: blur(10px); border: 2px solid tomato; border-radius: 8px; padding: 12px; color: #0f172a; min-width: 200px; box-shadow: 0 6px 20px rgba(255, 99, 71, 0.3);">
+                                 <div style="font-weight: bold; font-size: 14px; border-bottom: 2px solid tomato; padding-bottom: 4px; margin-bottom: 4px; color: tomato;">${name}</div>
+                                 ${valueDisplay}
+                                 <div style="margin-top: 8px; font-size: 10px; color: #94a3b8; text-align: center;">Đã chọn khu vực này</div>
+                             </div>`)
+                        .addTo(map);
 
-                // Remove popup after 3 seconds
-                setTimeout(() => clickPopup.remove(), 3000);
+                    // Remove popup after 3 seconds
+                    setTimeout(() => clickPopup.remove(), 3000);
+                }
             }
         };
 
-        map.on('click', 'ttvt-fill', handleClick);
+        map.on('click', fillLayerId, handleClick);
 
         return () => {
-            map.off('click', 'ttvt-fill', handleClick);
+            map.off('click', fillLayerId, handleClick);
         };
-    }, [map, isLoaded]);
+    }, [map, isLoaded, geoConfig, dataSource, data, config.style?.yAxisFieldLabels, regionType]);
 
     return null;
 };
@@ -700,31 +840,19 @@ export function MapChart({ data, config, width, height }: MapChartProps) {
     const { style, dataSource } = config;
     const [legendItems, setLegendItems] = useState<{ code: string; name: string; color: string }[]>([]);
 
+    // Region type state (ttvt or phuong_xa)
+    const [regionType, setRegionType] = useState<RegionType>('ttvt');
+
     // Filter states
-    const [selectedXAxis, setSelectedXAxis] = useState<string>(dataSource?.xAxis || '');
     const [selectedYAxisLayers, setSelectedYAxisLayers] = useState<string[]>(dataSource?.yAxis || []);
 
-    // Generate X-axis options (region types)
+    // Generate X-axis options (region types) - now controls which GeoJSON to use
     const xAxisOptions = useMemo(() => {
-        const options: { value: string; label: string }[] = [];
-        
-        // Default TTVT option
-        if (dataSource?.xAxis) {
-            options.push({
-                value: dataSource.xAxis,
-                label: 'Khu vực TTVT'
-            });
-        }
-        
-        // Add Xa-Phuong option if available (can be extended based on data)
-        // For now, we simulate with the same xAxis but different label
-        options.push({
-            value: 'xa_phuong',
-            label: 'Khu vực Xã - Phường'
-        });
-        
-        return options;
-    }, [dataSource?.xAxis]);
+        return [
+            { value: 'ttvt', label: 'Khu vực TTVT' },
+            { value: 'phuong_xa', label: 'Khu vực Xã - Phường' }
+        ];
+    }, []);
 
     // Generate Y-axis options (layer types) with friendly labels
     const yAxisOptions = useMemo(() => {
@@ -737,13 +865,15 @@ export function MapChart({ data, config, width, height }: MapChartProps) {
 
     // Initialize selected layers when config changes
     useEffect(() => {
-        if (dataSource?.xAxis && selectedXAxis === '') {
-            setSelectedXAxis(dataSource.xAxis);
-        }
         if (dataSource?.yAxis && selectedYAxisLayers.length === 0) {
             setSelectedYAxisLayers(dataSource.yAxis);
         }
-    }, [dataSource?.xAxis, dataSource?.yAxis]);
+    }, [dataSource?.yAxis]);
+
+    // Handle region type change
+    const handleRegionTypeChange = useCallback((value: string) => {
+        setRegionType(value as RegionType);
+    }, []);
 
     // Create filtered config based on selected layers
     const filteredConfig = useMemo(() => {
@@ -751,11 +881,10 @@ export function MapChart({ data, config, width, height }: MapChartProps) {
             ...config,
             dataSource: {
                 ...config.dataSource,
-                xAxis: selectedXAxis === 'xa_phuong' ? config.dataSource?.xAxis : selectedXAxis,
                 yAxis: selectedYAxisLayers.length > 0 ? selectedYAxisLayers : config.dataSource?.yAxis
             }
         };
-    }, [config, selectedXAxis, selectedYAxisLayers]);
+    }, [config, selectedYAxisLayers]);
 
     // Center coordinates for region (Dong Thap / Mekong Delta approx)
     const center: [number, number] = [106.35, 10.45];
@@ -772,9 +901,9 @@ export function MapChart({ data, config, width, height }: MapChartProps) {
                     <FilterPanel
                         xAxisOptions={xAxisOptions}
                         yAxisOptions={yAxisOptions}
-                        selectedXAxis={selectedXAxis || xAxisOptions[0]?.value || ''}
+                        selectedXAxis={regionType}
                         selectedYAxisLayers={selectedYAxisLayers}
-                        onXAxisChange={setSelectedXAxis}
+                        onXAxisChange={handleRegionTypeChange}
                         onYAxisChange={setSelectedYAxisLayers}
                     />
                 )}
@@ -787,8 +916,8 @@ export function MapChart({ data, config, width, height }: MapChartProps) {
                     showFullscreen={true}
                     show3D={true}
                 />
-                <MapLayers data={data} config={filteredConfig} setLegendItems={setLegendItems} />
-                <MapMarkers data={data} config={filteredConfig} />
+                <MapLayers data={data} config={filteredConfig} setLegendItems={setLegendItems} regionType={regionType} />
+                {regionType === 'ttvt' && <MapMarkers data={data} config={filteredConfig} />}
                 {legendItems.length > 0 && (
                     <Legend items={legendItems} />
                 )}

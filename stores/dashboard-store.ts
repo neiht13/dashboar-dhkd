@@ -29,7 +29,7 @@ interface DashboardState {
     fetchDashboards: () => Promise<void>;
     fetchDashboard: (id: string) => Promise<Dashboard | null>;
     saveDashboardToServer: (dashboard?: Dashboard | null) => Promise<boolean>;
-    createShareLink: (dashboardId: string, options?: { permission?: 'view' | 'edit'; expiresIn?: string; maxViews?: number }) => Promise<{ publicUrl: string; token: string } | null>;
+    createShareLink: (dashboardId: string, options?: { permission?: 'view' | 'edit'; expiresIn?: string; maxViews?: number; type?: 'public' | 'jwt' }) => Promise<{ publicUrl: string; token: string; secretKey?: string } | null>;
 
     // UI State
     toggleEditing: () => void;
@@ -201,7 +201,8 @@ export const useDashboardStore = create<DashboardState>()(
                 });
             },
 
-            // MongoDB Sync
+            // MongoDB Sync - These are kept for backward compatibility
+            // Consider using useDashboards/useDashboard hooks instead for better caching
             fetchDashboards: async () => {
                 set({ isLoading: true, error: null });
                 try {
@@ -294,6 +295,7 @@ export const useDashboardStore = create<DashboardState>()(
                         return {
                             publicUrl: result.data.publicUrl,
                             token: result.data.token,
+                            secretKey: result.data.secretKey,
                         };
                     }
                     return null;

@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import { DashboardGrid } from "@/components/dashboard-builder/DashboardGrid";
 import { WidgetLibrary } from "@/components/dashboard-builder/WidgetLibrary";
 import { DashboardHeader } from "@/components/dashboard-builder/DashboardHeader";
-import { GlobalFilters } from "@/components/dashboard-builder/GlobalFilters";
+import { EnhancedGlobalFilters } from "@/components/dashboard-builder/EnhancedGlobalFilters";
+import { RefreshStatus } from "@/components/dashboard-builder/RefreshStatus";
 import { useDashboardStore } from "@/stores/dashboard-store";
 import { generateId } from "@/lib/utils";
 import {
@@ -55,9 +56,17 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
     const [dashboardDescription, setDashboardDescription] = useState("");
     const [showVersionHistory, setShowVersionHistory] = useState(false);
     const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+    const [lastDataUpdate, setLastDataUpdate] = useState<Date | null>(null);
     
     // Undo/Redo integration
     const { initializeState, pushState } = useUndoRedoStore();
+
+    // Refresh data handler
+    const handleRefreshData = async () => {
+        // Trigger refresh by updating refreshTrigger timestamp
+        // DashboardGrid will watch this and clear cache + refetch
+        setLastDataUpdate(new Date());
+    };
 
     // Load or create dashboard
     useEffect(() => {
@@ -407,8 +416,14 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
                         {/* Dashboard Header with Title, Description, Tabs */}
                         <DashboardHeader />
 
-                        {/* Global Filters */}
-                        <GlobalFilters />
+                        {/* Enhanced Global Filters */}
+                        <EnhancedGlobalFilters />
+
+                        {/* Refresh Status */}
+                        <RefreshStatus
+                            onRefresh={handleRefreshData}
+                            lastUpdated={lastDataUpdate}
+                        />
 
                         {/* Grid Area */}
                         <div className="flex-1 overflow-y-auto bg-[#F8FAFC]">
@@ -419,7 +434,10 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
                             }>
 
 
-                                <DashboardGrid />
+                                <DashboardGrid
+                                    refreshTrigger={lastDataUpdate}
+                                    onDataUpdated={setLastDataUpdate}
+                                />
                             </div>
                         </div>
                     </div>

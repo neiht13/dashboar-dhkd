@@ -30,8 +30,16 @@ import {
     FileSpreadsheet,
     X,
     Table2,
+    Gauge,
 } from "lucide-react";
-import * as XLSX from 'xlsx';
+// Dynamic import for xlsx - loaded only when needed
+let XLSX: typeof import('xlsx') | null = null;
+const loadXLSX = async () => {
+    if (!XLSX) {
+        XLSX = await import('xlsx');
+    }
+    return XLSX;
+};
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -81,6 +89,7 @@ const chartTypes: { type: ChartType; label: string; icon: React.ReactNode }[] = 
     { type: "composed", label: "Kết hợp", icon: <GitMerge className="h-5 w-5" /> },
     { type: "funnel", label: "Phễu", icon: <Filter className="h-5 w-5" /> },
     { type: "map", label: "Bản đồ", icon: <Map className="h-5 w-5" /> },
+    { type: "gauge", label: "Tốc độ (Gauge)", icon: <Gauge className="h-5 w-5" /> },
     { type: "card", label: "Thẻ thống kê", icon: <BarChart2 className="h-5 w-5" /> },
 ];
 
@@ -134,7 +143,11 @@ const aggregateData = (data: any[], groupByField: string, valueFields: string[],
     });
 };
 
-// Extended function with groupBy array, orderBy, limit support
+// Import shared utilities
+import { processChartData as processChartDataUtil, createCompositeLabel } from '@/lib/chart-data-utils';
+
+// Extended function with groupBy array, orderBy, limit support (wrapper for backward compatibility)
+// Uses shared utility but adds drillDownLabelField MAX aggregation logic
 const processChartData = (
     data: any[],
     xAxis: string,
@@ -148,89 +161,23 @@ const processChartData = (
 ) => {
     if (!xAxis || yAxis.length === 0 || !data.length) return data;
 
-    // Build group fields: xAxis + additionalGroupBy
-    const groupFields = [xAxis, ...additionalGroupBy];
-
-    // Aggregate
-    const groups: Record<string, any> = {};
-    data.forEach(item => {
-        const key = groupFields.map(f => String(item[f] || '')).join('|||');
-        if (!groups[key]) {
-            groups[key] = { _count: 0 };
-            groupFields.forEach(f => { groups[key][f] = item[f]; });
-            yAxis.forEach(field => {
-                groups[key][field] = aggregation === 'min' ? Infinity : (aggregation === 'max' ? -Infinity : 0);
-            });
-            // Create composite label if groupBy exists
-            if (additionalGroupBy.length > 0) {
-                const labelParts = [String(item[xAxis] || ''), ...additionalGroupBy.map(g => String(item[g] || ''))];
-                groups[key]._compositeLabel = labelParts.join(' - ');
-            }
-        }
-        groups[key]._count++;
-
-        yAxis.forEach(field => {
-            const val = Number(item[field]) || 0;
-            if (aggregation === 'sum' || aggregation === 'avg') {
-                groups[key][field] += val;
-            } else if (aggregation === 'min') {
-                groups[key][field] = Math.min(groups[key][field], val);
-            } else if (aggregation === 'max') {
-                groups[key][field] = Math.max(groups[key][field], val);
-            }
-        });
-
-        // Aggregate drillDownLabelField (MAX) if present
-        if (drillDownLabelField && item[drillDownLabelField]) {
-            const currentLabel = String(groups[key][drillDownLabelField] || '');
-            const newLabel = String(item[drillDownLabelField]);
-            // Use lexicographical comparison to pick "MAX" label
-            if (newLabel.localeCompare(currentLabel) > 0) {
-                groups[key][drillDownLabelField] = newLabel;
-            }
-        }
+    // Use shared utility for main processing
+    let result = processChartDataUtil(data, {
+        xAxis,
+        yAxis,
+        aggregation: aggregation as any,
+        groupBy: additionalGroupBy,
+        orderBy: orderByField,
+        orderDirection: orderDir,
+        limit: limitNum,
+        drillDownLabelField,
     });
 
-    let result = Object.values(groups).map((group: any) => {
-        const row = { ...group };
-        yAxis.forEach(field => {
-            if (aggregation === 'avg') {
-                row[field] = row[field] / group._count;
-            } else if (aggregation === 'count') {
-                row[field] = group._count;
-            }
-        });
-        delete row._count;
-
-        // Store original value for drill-down
-        row._drillValue = row[xAxis];
-
-        // If composite label exists, override xAxis value
-        if (row._compositeLabel) {
-            row[xAxis] = row._compositeLabel;
-            delete row._compositeLabel;
-        }
-        return row;
-    });
-
-    // Sort
-    if (orderByField) {
-        result = result.sort((a, b) => {
-            const aVal = a[orderByField];
-            const bVal = b[orderByField];
-            if (typeof aVal === 'number' && typeof bVal === 'number') {
-                return orderDir === 'asc' ? aVal - bVal : bVal - aVal;
-            }
-            return orderDir === 'asc'
-                ? String(aVal || '').localeCompare(String(bVal || ''))
-                : String(bVal || '').localeCompare(String(aVal || ''));
-        });
-    }
-
-    // Limit
-    if (limitNum > 0) {
-        result = result.slice(0, limitNum);
-    }
+    // Add _drillValue for backward compatibility
+    result = result.map(row => ({
+        ...row,
+        _drillValue: row[xAxis],
+    }));
 
     return result;
 };
@@ -591,7 +538,7 @@ function ChartBuilderContent() {
     const [yAxisFieldLabels, setYAxisFieldLabels] = useState<Record<string, string>>({}); // Custom labels for Y-axis fields
     const [yAxisFieldColors, setYAxisFieldColors] = useState<Record<string, string>>({}); // Custom colors for Y-axis fields
     const [titleFontSize, setTitleFontSize] = useState(14);
-    const [pieVariant, setPieVariant] = useState<"default" | "sized" | "donut">("default");
+    const [pieVariant, setPieVariant] = useState<"default" | "sized" | "donut" | "gauge">("default");
 
     // Card styling state
     const [cardFontSize, setCardFontSize] = useState<"sm" | "md" | "lg" | "xl">("lg");
@@ -770,13 +717,13 @@ function ChartBuilderContent() {
             if (result.success && result.data) {
                 let chartDataResult = result.data;
 
-                // Create composite x-axis labels if groupBy exists (same as dashboard)
+                // Create composite x-axis labels if groupBy exists using shared utility
                 if (selectedXAxis && groupBy.length > 0) {
                     chartDataResult = chartDataResult.map((row: Record<string, unknown>) => {
-                        const labelParts = [String(row[selectedXAxis] || ''), ...groupBy.map(g => String(row[g] || ''))];
+                        const compositeLabel = createCompositeLabel(row, selectedXAxis, groupBy);
                         return {
                             ...row,
-                            [selectedXAxis]: labelParts.join(' - '),
+                            [selectedXAxis]: compositeLabel,
                         };
                     });
                 }
@@ -1052,10 +999,9 @@ function ChartBuilderContent() {
                 const result = await response.json();
                 if (result.success && result.data) {
                     return result.data.map((row: any, index: number) => {
-                        // Composite label logic
+                        // Composite label logic using shared utility
                         if (groupByArr.length > 0 && effectiveXAxis) {
-                            const labelParts = [String(row[effectiveXAxis] || ''), ...groupByArr.map(g => String(row[g] || ''))];
-                            const compositeLabel = labelParts.join(' - ');
+                            const compositeLabel = createCompositeLabel(row, effectiveXAxis, groupByArr);
                             return {
                                 ...row,
                                 [effectiveXAxis]: compositeLabel,
@@ -1339,9 +1285,10 @@ function ChartBuilderContent() {
 
                                                             try {
                                                                 const data = await file.arrayBuffer();
-                                                                const workbook = XLSX.read(data, { type: 'array' });
+                                                                const xlsxLib = await loadXLSX();
+                                                                const workbook = xlsxLib.read(data, { type: 'array' });
                                                                 const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                                                                const jsonData = XLSX.utils.sheet_to_json(firstSheet) as Record<string, unknown>[];
+                                                                const jsonData = xlsxLib.utils.sheet_to_json(firstSheet) as Record<string, unknown>[];
 
                                                                 if (jsonData.length === 0) {
                                                                     toast.error("File không có dữ liệu");
@@ -2463,13 +2410,8 @@ GROUP BY THANG, NAM, Ma_DV`}
                                                 {/* Metrics Configuration */}
                                                 <div className="pt-4 border-t border-[#E2E8F0]">
                                                     <MetricsEditor
-                                                        data={queryMode === 'import' ? importedData : []}
-                                                        availableFields={queryMode === 'import' ? Object.keys(importedData[0] || {}) : []}
-                                                        filters={statCardMetrics}
+                                                        metrics={statCardMetrics}
                                                         onChange={setStatCardMetrics}
-                                                        onApplyFilters={() => {}} // Not used for cards
-                                                        mode="metrics"
-                                                        className="w-full"
                                                     />
                                                 </div>
                                             </div>
@@ -2513,7 +2455,8 @@ GROUP BY THANG, NAM, Ma_DV`}
                                                             <label className="text-xs text-[#64748B] mb-1 block">Chế độ hiển thị</label>
                                                             <Select
                                                                 value={mapDisplayMode || "choropleth"}
-                                                                onValueChange={(value) => setMapDisplayMode(value)}
+                                                                value={mapDisplayMode || "choropleth"}
+                                                                onValueChange={(value) => setMapDisplayMode(value as "heatmap" | "category" | "value" | "choropleth" | "bubbles")}
                                                             >
                                                                 <SelectTrigger className="h-8">
                                                                     <SelectValue />
@@ -2530,7 +2473,8 @@ GROUP BY THANG, NAM, Ma_DV`}
                                                             <label className="text-xs text-[#64748B] mb-1 block">Màu sắc chủ đề</label>
                                                             <Select
                                                                 value={mapColorScheme || "default"}
-                                                                onValueChange={(value) => setMapColorScheme(value)}
+                                                                value={mapColorScheme || "default"}
+                                                                onValueChange={(value) => setMapColorScheme(value as "default" | "blues" | "greens" | "reds" | "purples")}
                                                             >
                                                                 <SelectTrigger className="h-8">
                                                                     <SelectValue />

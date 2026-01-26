@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Plus, X, Edit2, Check, FileText, Share2, Link, Copy, ExternalLink } from "lucide-react";
+import { Plus, X, Edit2, Check, FileText, Share2, Link, Copy, ExternalLink, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,12 @@ import {
     DialogTitle,
     DialogFooter,
 } from "@/components/ui/dialog";
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover";
+import { Trash2 } from "lucide-react";
 
 export function DashboardHeader() {
     const {
@@ -168,14 +174,23 @@ export function DashboardHeader() {
         setTabName("");
     };
 
-    const handleCreateShareLink = async () => {
+    const [shareLinkSecret, setShareLinkSecret] = useState<string | null>(null);
+
+    const handleCreateShareLink = async (type: 'public' | 'jwt' = 'public') => {
         setIsCreatingLink(true);
+        setShareLink("");
+        setShareLinkSecret(null);
+
         try {
             const result = await createShareLink(currentDashboard.id, {
                 permission: 'view',
+                type // Pass type to store/API
             });
             if (result) {
                 setShareLink(result.publicUrl);
+                if (result.secretKey) {
+                    setShareLinkSecret(result.secretKey);
+                }
             } else {
                 // Fallback: create local URL
                 const url = `${window.location.origin}/share/${currentDashboard.id}`;
@@ -310,6 +325,43 @@ export function DashboardHeader() {
                             <Share2 className="h-4 w-4" />
                             Chia sẻ
                         </Button>
+
+                        {/* Delete Dashboard Button */}
+                        {isEditing && (
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button variant="destructive" size="sm" className="gap-2">
+                                        <Trash2 className="h-4 w-4" />
+                                        Xóa
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-80" align="end">
+                                    <div className="space-y-4">
+                                        <h4 className="font-medium text-slate-900">Xóa Dashboard?</h4>
+                                        <p className="text-sm text-slate-500">
+                                            Hành động này không thể hoàn tác. Dashboard sẽ bị xóa vĩnh viễn.
+                                        </p>
+                                        <div className="flex justify-end gap-2">
+                                            {/* We can use a close button if needed, but clicking outside works too */}
+                                            <Button
+                                                variant="destructive"
+                                                size="sm"
+                                                onClick={() => {
+                                                    const { deleteDashboard } = useDashboardStore.getState();
+                                                    deleteDashboard(currentDashboard.id).then((success) => {
+                                                        if (success) {
+                                                            window.location.href = '/dashboards';
+                                                        }
+                                                    });
+                                                }}
+                                            >
+                                                Xác nhận xóa
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </PopoverContent>
+                            </Popover>
+                        )}
                     </div>
                 </div>
 
@@ -366,9 +418,33 @@ export function DashboardHeader() {
                                                         ? "hover:bg-red-400"
                                                         : "hover:bg-red-100 hover:text-red-600"
                                                 )}
-                                                onClick={(e) => handleDeleteTab(tab.id, e)}
+                                                onClick={(e) => {
+                                                    // Only stop propagation here if not using Popover, but with Popover we wrap it
+                                                    e.stopPropagation();
+                                                }}
                                             >
-                                                <X className="h-2.5 w-2.5" />
+                                                <Popover>
+                                                    <PopoverTrigger asChild>
+                                                        <span className="flex items-center justify-center w-full h-full"> {/* Span to handle trigger events properly inside button */}
+                                                            <X className="h-2.5 w-2.5" />
+                                                        </span>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-56 p-3" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+                                                        <div className="space-y-2">
+                                                            <h4 className="font-medium text-xs text-slate-900">Xóa Tab này?</h4>
+                                                            <div className="flex justify-end gap-2">
+                                                                <Button
+                                                                    variant="destructive"
+                                                                    size="sm"
+                                                                    className="h-6 text-xs px-2"
+                                                                    onClick={(e) => handleDeleteTab(tab.id, e)}
+                                                                >
+                                                                    Xác nhận
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                    </PopoverContent>
+                                                </Popover>
                                             </button>
                                         </div>
                                     )}
@@ -394,7 +470,7 @@ export function DashboardHeader() {
 
             {/* Share Dialog */}
             <Dialog open={showShareDialog} onOpenChange={setShowShareDialog}>
-                <DialogContent className="sm:max-w-[500px]">
+                <DialogContent className="sm:max-w-[600px]">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <Share2 className="h-5 w-5" />
@@ -403,54 +479,130 @@ export function DashboardHeader() {
                     </DialogHeader>
 
                     <div className="py-4">
-                        <p className="text-sm text-[#64748B] mb-4">
-                            Chia sẻ dashboard "{currentDashboard.name}" với người khác thông qua link bên dưới.
-                        </p>
+                        <div className="flex bg-slate-100 rounded-lg p-1 mb-6 w-fit text-sm">
+                            <button
+                                onClick={() => {
+                                    setShareLink("");
+                                    setIsCreatingLink(false);
+                                    // Reset to public mode (logic in create handler)
+                                }}
+                                className={cn(
+                                    "px-4 py-1.5 rounded-md font-medium transition-all",
+                                    !shareLink.includes("auth=") ? "bg-white shadow-sm text-slate-900" : "text-slate-500 hover:text-slate-900"
+                                )}
+                            >
+                                Public Link
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setShareLink("");
+                                    setIsCreatingLink(false);
+                                    // Reset to secure mode
+                                }}
+                                className={cn(
+                                    "px-4 py-1.5 rounded-md font-medium transition-all",
+                                    shareLink.includes("auth=") || (shareLink && shareLink.includes("secret=")) ? "bg-white shadow-sm text-slate-900" : "text-slate-500 hover:text-slate-900"
+                                )}
+                            >
+                                Secure Embed (JWT)
+                            </button>
+                        </div>
 
-                        {isCreatingLink ? (
-                            <div className="flex items-center justify-center py-8">
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0052CC]"></div>
-                            </div>
-                        ) : shareLink ? (
+                        {!shareLink ? (
                             <div className="space-y-4">
-                                <div className="flex items-center gap-2">
-                                    <div className="flex-1 flex items-center bg-[#F1F5F9] rounded-lg px-3 py-2">
-                                        <Link className="h-4 w-4 text-[#64748B] mr-2 flex-shrink-0" />
-                                        <span className="text-sm text-[#0F172A] truncate">{shareLink}</span>
-                                    </div>
-                                    <Button
-                                        variant={copied ? "default" : "outline"}
-                                        size="sm"
-                                        className="gap-2"
-                                        onClick={handleCopyLink}
-                                    >
-                                        {copied ? (
-                                            <>
-                                                <Check className="h-4 w-4" />
-                                                Đã copy
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Copy className="h-4 w-4" />
-                                                Copy
-                                            </>
-                                        )}
+                                <p className="text-sm text-slate-600">
+                                    Chọn phương thức chia sẻ để tạo link mới.
+                                </p>
+                                <div className="flex gap-4">
+                                    <Button onClick={() => handleCreateShareLink()} className="flex-1" variant="outline">
+                                        Tạo Public Link
+                                    </Button>
+                                    <Button onClick={() => handleCreateShareLink('jwt')} className="flex-1">
+                                        Tạo Secure Link
                                     </Button>
                                 </div>
-
-                                <Button
-                                    variant="outline"
-                                    className="w-full gap-2"
-                                    onClick={() => window.open(shareLink, '_blank')}
-                                >
-                                    <ExternalLink className="h-4 w-4" />
-                                    Mở trong tab mới
-                                </Button>
                             </div>
                         ) : (
-                            <p className="text-center text-[#94A3B8] py-4">
-                                Không thể tạo link chia sẻ
-                            </p>
+                            <div className="space-y-4">
+                                {isCreatingLink ? (
+                                    <div className="flex items-center justify-center py-8">
+                                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0052CC]"></div>
+                                    </div>
+                                ) : (
+                                    <>
+                                        {/* Show Secret Key for JWT links */}
+                                        {shareLinkSecret && (
+                                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+                                                <h4 className="text-sm font-semibold text-amber-800 mb-2 flex items-center gap-2">
+                                                    <Lock className="w-4 h-4" /> Secret Key (Lưu ngay, sẽ không hiển thị lại)
+                                                </h4>
+                                                <div className="flex gap-2">
+                                                    <code className="flex-1 bg-white border border-amber-200 px-3 py-2 rounded text-xs font-mono break-all text-amber-900">
+                                                        {shareLinkSecret}
+                                                    </code>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        className="h-auto text-amber-800 hover:text-amber-900 hover:bg-amber-100"
+                                                        onClick={() => {
+                                                            navigator.clipboard.writeText(shareLinkSecret);
+                                                            // toast success
+                                                        }}
+                                                    >
+                                                        <Copy className="w-4 h-4" />
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium text-slate-700">Link chia sẻ</label>
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex-1 flex items-center bg-[#F1F5F9] rounded-lg px-3 py-2">
+                                                    <Link className="h-4 w-4 text-[#64748B] mr-2 flex-shrink-0" />
+                                                    <span className="text-sm text-[#0F172A] truncate">{shareLink}</span>
+                                                </div>
+                                                <Button
+                                                    variant={copied ? "default" : "outline"}
+                                                    size="sm"
+                                                    className="gap-2"
+                                                    onClick={handleCopyLink}
+                                                >
+                                                    {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                                                </Button>
+                                            </div>
+                                        </div>
+
+                                        {shareLinkSecret && (
+                                            <div className="space-y-2 pt-2">
+                                                <label className="text-sm font-medium text-slate-700">Hướng dẫn tích hợp (Node.js)</label>
+                                                <div className="bg-slate-900 rounded-lg p-3 overflow-x-auto">
+                                                    <pre className="text-xs text-slate-300 font-mono">
+                                                        {`const jwt = require('jsonwebtoken');
+
+const secret = '${shareLinkSecret}';
+const token = jwt.sign({ 
+  email: 'user@example.com', 
+  role: 'viewer' 
+}, secret, { expiresIn: '1h' });
+
+const embedUrl = \`\${dashUrl}&auth=\${token}\`;`}
+                                                    </pre>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <Button
+                                            variant="outline"
+                                            className="w-full gap-2 mt-4"
+                                            onClick={() => window.open(shareLink, '_blank')}
+                                        >
+                                            <ExternalLink className="h-4 w-4" />
+                                            Mở trong tab mới
+                                        </Button>
+                                    </>
+                                )}
+                            </div>
                         )}
                     </div>
 

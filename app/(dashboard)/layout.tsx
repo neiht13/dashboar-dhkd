@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { Header } from "@/components/layout/Header";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { SidebarSkeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -13,6 +15,7 @@ export default function DashboardLayout({
 }) {
     const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
     const [mounted, setMounted] = useState(false);
+    const pathname = usePathname();
 
     useEffect(() => {
         setMounted(true);
@@ -55,7 +58,7 @@ export default function DashboardLayout({
         <div className="min-h-screen flex bg-[#F8FAFC] dark:bg-gray-950">
             {/* Mobile sidebar overlay */}
             {isMobileSidebarOpen && (
-                <div 
+                <div
                     className="fixed inset-0 bg-black/50 z-40 lg:hidden"
                     onClick={() => setIsMobileSidebarOpen(false)}
                 />
@@ -70,11 +73,31 @@ export default function DashboardLayout({
             </div>
 
             {/* Main content */}
-            <main className="flex-1 flex flex-col h-screen overflow-hidden w-full">
+            <main className="flex-1 flex flex-col h-screen overflow-hidden w-full bg-muted/40">
+                {/* Conditionally render header based on path - Builder pages have their own header */}
+                {!(pathname?.startsWith('/builder') || pathname?.startsWith('/charts/new')) && (
+                    <Header
+                        title={getTitle(pathname)}
+                        subtitle="Quản lý dữ liệu tập trung"
+                        onMenuClick={() => setIsMobileSidebarOpen(true)}
+                    />
+                )}
                 <ErrorBoundary>
                     {children}
                 </ErrorBoundary>
             </main>
         </div>
     );
+}
+
+function getTitle(pathname: string) {
+    if (!pathname) return 'Tổng quan';
+    if (pathname === '/' || pathname === '/dashboard') return 'Tổng quan';
+    if (pathname.startsWith('/charts')) return 'Thư viện biểu đồ';
+    if (pathname.startsWith('/builder')) return 'Thiết kế Dashboard';
+    if (pathname.startsWith('/database')) return 'Dữ liệu';
+    if (pathname.startsWith('/settings')) return 'Cài đặt';
+    if (pathname.startsWith('/teams')) return 'Nhóm làm việc';
+    if (pathname.startsWith('/alerts')) return 'Cảnh báo';
+    return 'Dashboard';
 }

@@ -34,7 +34,8 @@ export type ChartType =
   | 'map'
   | 'card'
   | 'hexagon'
-  | 'statCard';
+  | 'statCard'
+  | 'gauge';
 
 export type AggregationType = 'sum' | 'avg' | 'count' | 'min' | 'max' | 'none';
 
@@ -65,6 +66,7 @@ export interface DataSource {
   // Imported data (for queryMode 'import')
   importedData?: Record<string, unknown>[];
   importedFileName?: string;
+  metrics?: StatCardMetric[];
 }
 
 // Chart Style Preset Types
@@ -228,6 +230,12 @@ export interface StatCardMetric {
   chartData?: number[]; // For sparkline
   progress?: number; // For donut/gauge (0-100)
   color?: string;
+  // Enhanced design fields
+  change?: string; // e.g. "+20%"
+  changeValue?: string; // e.g. "($2,423)" or absolute change
+  isPositive?: boolean; // For trend color (green/red)
+  icon?: string; // Lucide icon name specific to this metric
+  description?: string; // Additional text like "vs Last Month"
 }
 
 export interface User {

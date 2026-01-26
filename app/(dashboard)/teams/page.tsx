@@ -9,18 +9,19 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { 
-    Users, 
-    Plus, 
-    Trash2, 
-    Pencil, 
+import {
+    Users,
+    Plus,
+    Trash2,
+    Pencil,
     UserPlus,
     Crown,
     Shield,
     User,
     Eye,
     Loader2,
-    MoreVertical
+    MoreVertical,
+    Phone
 } from 'lucide-react';
 import {
     DropdownMenu,
@@ -77,6 +78,7 @@ export default function TeamsPage() {
     const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
     const [inviteEmail, setInviteEmail] = useState('');
     const [inviteRole, setInviteRole] = useState<'admin' | 'member' | 'viewer'>('member');
+    const [invitePhone, setInvitePhone] = useState('');
 
     const [formData, setFormData] = useState({
         name: '',
@@ -179,7 +181,7 @@ export default function TeamsPage() {
             const response = await fetch(`/api/teams/${selectedTeam._id}/members`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
+                body: JSON.stringify({ email: inviteEmail, role: inviteRole, phone: invitePhone }),
             });
 
             const data = await response.json();
@@ -188,6 +190,7 @@ export default function TeamsPage() {
                 toast.success('Đã thêm thành viên');
                 setInviteDialogOpen(false);
                 setInviteEmail('');
+                setInvitePhone('');
                 fetchTeams();
             } else {
                 toast.error(data.error || 'Không thể thêm thành viên');
@@ -223,8 +226,8 @@ export default function TeamsPage() {
 
     return (
         <div className="flex flex-col h-full">
-            <Header 
-                title="Quản lý Nhóm" 
+            <Header
+                title="Quản lý Nhóm"
                 subtitle="Tạo và quản lý các nhóm làm việc"
                 showDatePicker={false}
                 showSearch={false}
@@ -235,7 +238,7 @@ export default function TeamsPage() {
                     </Button>
                 }
             />
-            
+
             <div className="flex-1 p-6 overflow-auto">
                 {loading ? (
                     <div className="flex items-center justify-center h-48">
@@ -277,7 +280,7 @@ export default function TeamsPage() {
                                                     <Pencil className="h-4 w-4 mr-2" />
                                                     Chỉnh sửa
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem 
+                                                <DropdownMenuItem
                                                     onClick={() => {
                                                         setSelectedTeam(team);
                                                         setInviteDialogOpen(true);
@@ -286,7 +289,7 @@ export default function TeamsPage() {
                                                     <UserPlus className="h-4 w-4 mr-2" />
                                                     Thêm thành viên
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem 
+                                                <DropdownMenuItem
                                                     className="text-destructive"
                                                     onClick={() => handleDelete(team._id)}
                                                 >
@@ -310,7 +313,7 @@ export default function TeamsPage() {
                                             {team.members?.slice(0, 5).map((member) => {
                                                 const roleConfig = ROLE_CONFIG[member.role];
                                                 const Icon = roleConfig.icon;
-                                                
+
                                                 return (
                                                     <div
                                                         key={member.userId}
@@ -408,6 +411,19 @@ export default function TeamsPage() {
                                         </Button>
                                     );
                                 })}
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Số điện thoại</Label>
+                            <div className="relative">
+                                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    type="tel"
+                                    value={invitePhone}
+                                    onChange={(e) => setInvitePhone(e.target.value)}
+                                    placeholder="Nhập số điện thoại"
+                                    className="pl-9"
+                                />
                             </div>
                         </div>
                     </div>

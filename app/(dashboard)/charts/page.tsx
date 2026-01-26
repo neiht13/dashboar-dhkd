@@ -3,9 +3,9 @@
 import React from "react";
 import Link from "next/link";
 import { Plus, BarChart3, LineChart, PieChart, Trash2, Edit, Copy } from "lucide-react";
-import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useChartStore } from "@/stores/chart-store";
 
 const chartIcons: Record<string, React.ReactNode> = {
@@ -80,20 +80,6 @@ export default function ChartsPage() {
 
     return (
         <>
-            <Header
-                title="My Charts"
-                subtitle="Thư viện"
-                showDatePicker={false}
-                actions={
-                    <Link href="/charts/new">
-                        <Button className="gap-2">
-                            <Plus className="h-4 w-4" />
-                            Tạo Chart Mới
-                        </Button>
-                    </Link>
-                }
-            />
-
             <div className="flex-1 overflow-y-auto p-6">
                 <div className="max-w-[1400px] mx-auto">
                     {charts.length === 0 ? (
@@ -170,14 +156,35 @@ export default function ChartsPage() {
                                                     >
                                                         <Copy className="h-4 w-4" />
                                                     </Button>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-8 w-8 text-[#D10029] hover:text-[#D10029]"
-                                                        onClick={() => deleteChart(chart.id)}
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
+                                                    <Popover>
+                                                        <PopoverTrigger asChild>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-8 w-8 text-[#D10029] hover:text-[#D10029]"
+                                                                title="Xóa biểu đồ"
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
+                                                        </PopoverTrigger>
+                                                        <PopoverContent className="w-80" align="end">
+                                                            <div className="space-y-4">
+                                                                <h4 className="font-medium text-slate-900">Xóa biểu đồ?</h4>
+                                                                <p className="text-sm text-slate-500">
+                                                                    Hành động này không thể hoàn tác. Biểu đồ sẽ bị xóa vĩnh viễn khỏi thư viện.
+                                                                </p>
+                                                                <div className="flex justify-end gap-2">
+                                                                    <Button
+                                                                        variant="destructive"
+                                                                        size="sm"
+                                                                        onClick={() => deleteChart(chart.id)}
+                                                                    >
+                                                                        Xác nhận xóa
+                                                                    </Button>
+                                                                </div>
+                                                            </div>
+                                                        </PopoverContent>
+                                                    </Popover>
                                                 </div>
                                             </div>
                                         </div>

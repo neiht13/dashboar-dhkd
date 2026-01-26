@@ -8,7 +8,7 @@ const JWT_SECRET = new TextEncoder().encode(
 );
 
 async function getUserFromToken(request: NextRequest) {
-    const token = request.cookies.get('auth-token')?.value;
+    const token = request.cookies.get('auth_token')?.value;
     if (!token) return null;
 
     try {
@@ -43,7 +43,7 @@ export async function POST(
         }
 
         const body = await request.json();
-        const { email, role = 'member' } = body;
+        const { email, role = 'member', phone } = body;
 
         if (!email) {
             return NextResponse.json(
@@ -104,6 +104,7 @@ export async function POST(
         const newMember = {
             userId: targetUser._id,
             role: ['owner', 'admin', 'member', 'viewer'].includes(role) ? role : 'member',
+            phone: phone || '',
             joinedAt: new Date(),
         };
 

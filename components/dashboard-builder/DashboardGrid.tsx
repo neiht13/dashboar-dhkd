@@ -11,8 +11,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { X, Move, GripVertical, Maximize2, BarChart3, Copy, Edit2, Settings } from "lucide-react";
 import { InteractiveChart } from "@/components/charts/InteractiveChart";
+import { StatCard } from "@/components/charts/StatCard";
 import { CrossFilterProvider, ActiveFiltersBar } from "@/components/charts/CrossFilterProvider";
 import { cn, generateId } from "@/lib/utils";
+import { useIsMobile, useIsTablet } from "@/hooks/use-responsive";
+import { processChartData, buildChartDataRequest, createCompositeLabel } from "@/lib/chart-data-utils";
+import { useBatchChartData } from "@/hooks/use-chart-data-processing";
 import type { Widget, LayoutItem, ChartConfig as ChartConfigType } from "@/types";
 import {
     Dialog,
@@ -28,9 +32,16 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover";
 
 interface DashboardGridProps {
     onWidgetDrop?: (x: number, y: number) => void;
+    refreshTrigger?: Date | null; // Trigger to force refresh
+    onDataUpdated?: (timestamp: Date) => void; // Callback when data is updated
 }
 
 // Widget size presets
@@ -47,13 +58,17 @@ const CHART_TYPES = [
     { value: "area", label: "Vùng (Area)" },
     { value: "pie", label: "Tròn (Pie)" },
     { value: "donut", label: "Donut" },
+    { value: "gauge", label: "Tốc độ (Gauge)" },
     { value: "radar", label: "Radar" },
     { value: "scatter", label: "Phân tán (Scatter)" },
 ];
 
 const GRID_COLS = 12;
+const GRID_COLS_MOBILE = 1; // Single column on mobile
 const CELL_HEIGHT = 60;
+const CELL_HEIGHT_MOBILE = 50; // Smaller cells on mobile
 const GAP = 16;
+const GAP_MOBILE = 12; // Smaller gap on mobile
 
 // Helper to check collision
 const itemsCollide = (a: LayoutItem, b: LayoutItem) => {
@@ -105,7 +120,7 @@ const resolveLayout = (layout: LayoutItem[], activeId: string): LayoutItem[] => 
     return sorted;
 };
 
-export function DashboardGrid() {
+export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridProps = {}) {
     const {
         currentDashboard,
         removeWidget,
@@ -117,12 +132,19 @@ export function DashboardGrid() {
     } = useDashboardStore();
 
     const [containerWidth, setContainerWidth] = useState(1200); // Default fallback
+    const isMobile = useIsMobile();
+    const isTablet = useIsTablet();
 
     const router = useRouter();
     const { charts } = useChartStore();
 
     const gridRef = useRef<HTMLDivElement>(null);
     const [showSizeMenu, setShowSizeMenu] = useState<string | null>(null);
+
+    // Responsive grid configuration
+    const gridCols = isMobile ? GRID_COLS_MOBILE : GRID_COLS;
+    const cellHeight = isMobile ? CELL_HEIGHT_MOBILE : CELL_HEIGHT;
+    const gap = isMobile ? GAP_MOBILE : GAP;
 
     // Measure container width
     useEffect(() => {
@@ -182,11 +204,172 @@ export function DashboardGrid() {
         setGridRows(maxRow);
     }, [currentDashboard?.widgets]);
 
-    // Fetch chart data for chart widgets
+    // Fetch chart data for chart widgets using batch endpoint
     useEffect(() => {
         if (!currentDashboard) return;
 
-        const fetchChartData = async (widgetId: string, config: ChartConfigType) => {
+        // Collect all chart widgets that need data fetching
+        const chartWidgets = currentDashboard.widgets.filter(
+            widget => widget.type === "chart" && 
+            !chartDataCache[widget.id] // Only fetch if not cached
+        );
+
+        if (chartWidgets.length === 0) return;
+
+        const fetchAllChartData = async () => {
+            // Build batch requests
+            const batchRequests = chartWidgets.map(widget => {
+                const widgetConfig = widget.config as ChartConfigType;
+                const chartConfig = charts.find(c => c.id === widgetConfig.chartId)?.config || widgetConfig;
+                const isCard = chartConfig.type === 'card';
+
+                // Handle import mode - process locally
+                if (chartConfig.dataSource?.queryMode === 'import' && chartConfig.dataSource?.importedData) {
+                    const rawData = chartConfig.dataSource.importedData as Record<string, unknown>[];
+                    const xAxis = chartConfig.dataSource.xAxis;
+                    const yAxis = chartConfig.dataSource.yAxis || [];
+                    const groupByFields = chartConfig.dataSource.groupBy;
+                    const orderByField = chartConfig.dataSource.orderBy;
+                    const orderDir = chartConfig.dataSource.orderDirection || 'asc';
+                    const limitNum = chartConfig.dataSource.limit || 0;
+
+                    // Process import data using shared utility
+                    const processedData = processChartData(rawData, {
+                        xAxis,
+                        yAxis,
+                        aggregation: chartConfig.dataSource.aggregation || 'sum',
+                        groupBy: groupByFields,
+                        orderBy: orderByField,
+                        orderDirection: orderDir,
+                        limit: limitNum,
+                        drillDownLabelField: chartConfig.dataSource.drillDownLabelField,
+                    });
+
+                    setChartDataCache(prev => ({
+                        ...prev,
+                        [widget.id]: processedData,
+                    }));
+                    return null; // Skip API call for import mode
+                }
+
+                // Build request for API-based charts
+                if (!chartConfig.dataSource?.table || (!isCard && !chartConfig.dataSource?.xAxis) || !chartConfig.dataSource?.yAxis?.length) {
+                    return null;
+                }
+
+                // Build request body using shared utility
+                const requestBody = buildChartDataRequest(chartConfig.dataSource, globalFilters);
+
+                const { queryMode, customQuery, connectionId } = chartConfig.dataSource;
+
+                return {
+                    widgetId: widget.id,
+                    config: {
+                        table: chartConfig.dataSource.table,
+                        xAxis: isCard ? undefined : chartConfig.dataSource.xAxis,
+                        yAxis: chartConfig.dataSource.yAxis,
+                        aggregation: chartConfig.dataSource.aggregation || "sum",
+                        groupBy: chartConfig.dataSource.groupBy || undefined,
+                        orderBy: chartConfig.dataSource.orderBy,
+                        orderDirection: chartConfig.dataSource.orderDirection,
+                        limit: chartConfig.dataSource.limit || undefined,
+                        filters: savedFilters,
+                        connectionId,
+                        queryMode,
+                        customQuery,
+                        drillDownLabelField: chartConfig.dataSource.drillDownLabelField,
+                        resolution: chartConfig.dataSource.resolution,
+                    },
+                };
+            }).filter((req): req is NonNullable<typeof req> => req !== null);
+
+            if (batchRequests.length === 0) return;
+
+            try {
+                // Fetch all charts in a single batch request
+                const response = await fetch("/api/database/chart-data/batch", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ requests: batchRequests }),
+                });
+
+                const result = await response.json();
+                if (result.success && result.data) {
+                    // Process each chart's data (same post-processing as before)
+                    const newCache: Record<string, any[]> = {};
+                    
+                    batchRequests.forEach(req => {
+                        const widget = chartWidgets.find(w => w.id === req.widgetId);
+                        if (!widget) return;
+                        
+                        const widgetConfig = widget.config as ChartConfigType;
+                        const chartConfig = charts.find(c => c.id === widgetConfig.chartId)?.config || widgetConfig;
+                        let chartData = result.data[req.widgetId] || [];
+
+                        if (chartData.length > 0) {
+                            const xAxis = chartConfig.dataSource?.xAxis;
+                            const groupByFields = chartConfig.dataSource?.groupBy;
+                            const groupByArr = Array.isArray(groupByFields) ? groupByFields : groupByFields ? [groupByFields] : [];
+                            const queryMode = chartConfig.dataSource?.queryMode;
+                            const aggregation = chartConfig.dataSource?.aggregation || "sum";
+
+                            // Post-process custom SQL mode using shared utility
+                            if (queryMode === 'custom' && xAxis && chartConfig.dataSource?.yAxis?.length) {
+                                chartData = processChartData(chartData, {
+                                    xAxis,
+                                    yAxis: chartConfig.dataSource.yAxis,
+                                    aggregation: aggregation as any,
+                                    groupBy: groupByArr,
+                                    drillDownLabelField: chartConfig.dataSource.drillDownLabelField,
+                                });
+                                
+                                // Add _drillValue for backward compatibility
+                                chartData = chartData.map((row: any) => ({
+                                    ...row,
+                                    _drillValue: row._drillValue || row[xAxis],
+                                }));
+                            } else if (xAxis && groupByArr.length > 0) {
+                                // Simple mode: just create composite labels
+                                chartData = chartData.map((row: any) => {
+                                    const labelParts = [String(row[xAxis] || ''), ...groupByArr.map(g => String(row[g] || ''))];
+                                    return {
+                                        ...row,
+                                        _drillValue: row[xAxis],
+                                        [xAxis]: labelParts.join(' - '),
+                                    };
+                                });
+                            }
+                        }
+
+                        newCache[req.widgetId] = chartData;
+                    });
+
+                    setChartDataCache(prev => ({
+                        ...prev,
+                        ...newCache,
+                    }));
+                }
+            } catch (error) {
+                if (error instanceof Error) {
+                    console.error("Error fetching batch chart data:", error.message);
+                } else {
+                    console.error("Error fetching batch chart data:", String(error));
+                }
+            }
+        };
+
+        fetchAllChartData();
+    }, [currentDashboard?.widgets, charts, globalFilters, refreshTrigger]);
+
+    // Clear cache when refresh is triggered
+    useEffect(() => {
+        if (refreshTrigger) {
+            setChartDataCache({});
+        }
+    }, [refreshTrigger]);
+
+    // Legacy single chart fetch (kept for drill-down and manual refresh)
+    const fetchChartData = async (widgetId: string, config: ChartConfigType) => {
             const isCard = config.type === 'card';
 
             // Handle import mode - aggregate imported data locally
@@ -299,23 +482,13 @@ export function DashboardGrid() {
 
                 const { queryMode, customQuery, connectionId } = config.dataSource;
 
-                // Build request payload
-                const requestBody: any = {
-                    table: config.dataSource.table,
-                    xAxis: isCard ? undefined : config.dataSource.xAxis,
-                    yAxis: config.dataSource.yAxis,
-                    aggregation: config.dataSource.aggregation || "sum",
-                    groupBy: config.dataSource.groupBy || undefined, // Send groupBy to API
-                    orderBy: config.dataSource.orderBy,
-                    orderDirection: config.dataSource.orderDirection,
-                    limit: config.dataSource.limit || undefined,
-                    filters: savedFilters,
-
-                    connectionId,
-                    drillDownLabelField: config.dataSource.drillDownLabelField,
-                };
-
-                // Custom SQL mode
+                // Build request payload using shared utility
+                const requestBody = buildChartDataRequest(config.dataSource, globalFilters);
+                
+                // Override xAxis for card type and add custom query if needed
+                if (isCard) {
+                    requestBody.xAxis = undefined;
+                }
                 if (queryMode === 'custom' && customQuery) {
                     requestBody.customQuery = customQuery;
                 }
@@ -426,7 +599,12 @@ export function DashboardGrid() {
                     }));
                 }
             } catch (error) {
-                console.error("Error fetching chart data:", error);
+                // Log error (sanitized - no sensitive data)
+                if (error instanceof Error) {
+                    console.error("Error fetching chart data:", error.message);
+                } else {
+                    console.error("Error fetching chart data:", String(error));
+                }
             }
         };
 
@@ -529,39 +707,56 @@ export function DashboardGrid() {
                 const groupByArr = Array.isArray(groupByFields) ? groupByFields : groupByFields ? [groupByFields] : [];
 
                 // Modify the custom query to add WHERE conditions for drill filters
-                let customQuery = config.dataSource.customQuery;
+                // IMPORTANT: We send filters as separate parameters to API for safe parameterized queries
+                // The API will handle building safe WHERE clauses
+                const customQuery = config.dataSource.customQuery;
 
-                // Build WHERE conditions
-                const whereConditions: string[] = [];
+                // Build safe filter array for API
+                const safeFilters: Array<{ field: string; operator: string; value: string | number }> = [];
+                
                 drillFilters.forEach(f => {
-                    const value = typeof f.value === 'string' ? `N'${f.value}'` : f.value;
-                    whereConditions.push(`[${f.field}] = ${value}`);
+                    // Validate field name (sanitize)
+                    const sanitizedField = f.field.replace(/[^a-zA-Z0-9_\[\]]/g, '');
+                    if (sanitizedField && sanitizedField === f.field) {
+                        safeFilters.push({
+                            field: sanitizedField,
+                            operator: f.operator || '=',
+                            value: f.value,
+                        });
+                    }
                 });
 
-                // Add global date filters
+                // Add global date filters as safe parameters
                 const startCol = config.dataSource.startDateColumn;
                 const endCol = config.dataSource.endDateColumn;
 
                 if (startCol && globalFilters.dateRange?.from) {
-                    const fromDate = globalFilters.dateRange.from instanceof Date
-                        ? globalFilters.dateRange.from.toISOString().split('T')[0]
-                        : globalFilters.dateRange.from;
-                    whereConditions.push(`[${startCol}] >= '${fromDate}'`);
+                    const sanitizedStartCol = startCol.replace(/[^a-zA-Z0-9_\[\]]/g, '');
+                    if (sanitizedStartCol === startCol) {
+                        const fromDate = globalFilters.dateRange.from instanceof Date
+                            ? globalFilters.dateRange.from.toISOString().split('T')[0]
+                            : globalFilters.dateRange.from;
+                        safeFilters.push({
+                            field: sanitizedStartCol,
+                            operator: '>=',
+                            value: fromDate,
+                        });
+                    }
                 }
 
                 if (endCol && globalFilters.dateRange?.to) {
-                    const toDate = globalFilters.dateRange.to instanceof Date
-                        ? globalFilters.dateRange.to.toISOString().split('T')[0]
-                        : globalFilters.dateRange.to;
-                    whereConditions.push(`[${endCol}] <= '${toDate}'`);
+                    const sanitizedEndCol = endCol.replace(/[^a-zA-Z0-9_\[\]]/g, '');
+                    if (sanitizedEndCol === endCol) {
+                        const toDate = globalFilters.dateRange.to instanceof Date
+                            ? globalFilters.dateRange.to.toISOString().split('T')[0]
+                            : globalFilters.dateRange.to;
+                        safeFilters.push({
+                            field: sanitizedEndCol,
+                            operator: '<=',
+                            value: toDate,
+                        });
+                    }
                 }
-
-                // Wrap custom query as subquery and add WHERE
-                if (whereConditions.length > 0) {
-                    customQuery = `SELECT * FROM (${customQuery}) AS _drill_sub WHERE ${whereConditions.join(' AND ')}`;
-                }
-
-                console.log('[Drill-down Custom SQL] Query:', customQuery);
 
                 const response = await fetch("/api/database/chart-data", {
                     method: "POST",
@@ -569,6 +764,7 @@ export function DashboardGrid() {
                     body: JSON.stringify({
                         customQuery: customQuery.trim(),
                         connectionId: config.dataSource.connectionId,
+                        filters: safeFilters, // Send filters as separate parameterized array
                     }),
                 });
 
@@ -576,70 +772,14 @@ export function DashboardGrid() {
                 if (result.success && result.data && result.data.length > 0) {
                     let chartData = result.data as Record<string, unknown>[];
 
-                    // Apply same aggregation logic as outer chart (lines 338-402 logic)
+                    // Apply same aggregation logic using shared utility
                     if (xAxisField && yAxisFields.length > 0) {
-                        const groups: Record<string, any> = {};
-                        // Use drillDownLabelField if configured for grouping (Dimension Switching)
-                        const drillLabelField = config.dataSource.drillDownLabelField;
-                        const groupingField = drillLabelField || xAxisField;
-
-                        chartData.forEach(row => {
-                            const keyFields = [groupingField, ...groupByArr];
-                            const key = keyFields.map(f => String(row[f] ?? "")).join("|||");
-                            if (!groups[key]) {
-                                groups[key] = { _count: 0 } as any;
-                                keyFields.forEach(f => { groups[key][f] = row[f]; });
-                                yAxisFields.forEach(y => {
-                                    groups[key][y] =
-                                        aggregation === "min"
-                                            ? Infinity
-                                            : aggregation === "max"
-                                                ? -Infinity
-                                                : 0;
-                                });
-                                // Composite label
-                                if (groupByArr.length > 0) {
-                                    const labelParts = keyFields.map(f => String(row[f] ?? ""));
-                                    groups[key]._compositeLabel = labelParts.join(" - ");
-                                }
-                            }
-                            groups[key]._count++;
-                            yAxisFields.forEach(y => {
-                                const val = Number(row[y]) || 0;
-                                if (aggregation === "sum" || aggregation === "avg") {
-                                    groups[key][y] += val;
-                                } else if (aggregation === "min") {
-                                    groups[key][y] = Math.min(groups[key][y], val);
-                                } else if (aggregation === "max") {
-                                    groups[key][y] = Math.max(groups[key][y], val);
-                                }
-                            });
-                        });
-
-                        chartData = Object.values(groups).map((g: any) => {
-                            const row: any = { ...g };
-                            if (aggregation === "avg") {
-                                yAxisFields.forEach(y => {
-                                    row[y] = row[y] / g._count;
-                                });
-                            } else if (aggregation === "count") {
-                                yAxisFields.forEach(y => {
-                                    row[y] = g._count;
-                                });
-                            }
-                            delete row._count;
-
-                            if (row._compositeLabel && groupingField) {
-                                row[groupingField] = row._compositeLabel;
-                                delete row._compositeLabel;
-                            }
-
-                            // Add name/label for chart display
-                            const displayLabel = row[groupingField] || `#${Object.keys(groups).indexOf(row) + 1}`;
-                            row._label = displayLabel;
-                            row.name = displayLabel;
-
-                            return row;
+                        chartData = processChartData(chartData, {
+                            xAxis: config.dataSource.drillDownLabelField || xAxisField,
+                            yAxis: yAxisFields,
+                            aggregation,
+                            groupBy: groupByArr,
+                            drillDownLabelField: config.dataSource.drillDownLabelField,
                         });
                     }
 
@@ -647,7 +787,12 @@ export function DashboardGrid() {
                 }
                 return [];
             } catch (error) {
-                console.error("Error fetching Custom SQL drill-down data:", error);
+                // Log error (sanitized - no sensitive data)
+                if (error instanceof Error) {
+                    console.error("Error fetching Custom SQL drill-down data:", error.message);
+                } else {
+                    console.error("Error fetching Custom SQL drill-down data:", String(error));
+                }
                 return [];
             }
         }
@@ -738,7 +883,7 @@ export function DashboardGrid() {
                 GROUP BY ${groupCols.join(', ')}
             `;
 
-            console.log('[Drill-down Simple] Query:', customQuery);
+            // Debug log removed for security (query details should not be logged client-side)
 
             const response = await fetch("/api/database/chart-data", {
                 method: "POST",
@@ -775,7 +920,12 @@ export function DashboardGrid() {
 
             return [];
         } catch (error) {
-            console.error("Error fetching drill-down data:", error);
+            // Log error (sanitized - no sensitive data)
+            if (error instanceof Error) {
+                console.error("Error fetching drill-down data:", error.message);
+            } else {
+                console.error("Error fetching drill-down data:", String(error));
+            }
             return [];
         }
     }, [globalFilters]);
@@ -989,13 +1139,85 @@ export function DashboardGrid() {
         document.addEventListener("mouseup", handleMouseUp);
     };
 
+    // Handle widget touch for mobile drag
+    const handleWidgetTouchStart = (widget: Widget, e: React.TouchEvent) => {
+        if (!isEditing || !isMobile) return;
+        e.preventDefault();
+
+        setDraggingWidgetId(widget.id);
+        const touch = e.touches[0];
+        const startX = touch.clientX;
+        const startY = touch.clientY;
+        const startLayoutY = widget.layout?.y || 0;
+
+        // Initialize preview
+        setPreviewLayout(prev => ({
+            ...prev,
+            [widget.id]: widget.layout || { i: widget.id, x: 0, y: 0, w: 4, h: 3 }
+        }));
+
+        let animationFrameId: number;
+
+        const handleTouchMove = (moveEvent: TouchEvent) => {
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            if (moveEvent.touches.length === 0) return;
+
+            animationFrameId = requestAnimationFrame(() => {
+                const touch = moveEvent.touches[0];
+                const deltaY = touch.clientY - startY;
+
+                const rowDelta = Math.round(deltaY / (cellHeight + gap));
+                const newY = Math.max(0, startLayoutY + rowDelta);
+
+                setPreviewLayout(prev => ({
+                    ...prev,
+                    [widget.id]: {
+                        ...prev[widget.id],
+                        y: newY,
+                    }
+                }));
+            });
+        };
+
+        const handleTouchEnd = () => {
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            setDraggingWidgetId(null);
+            document.removeEventListener("touchmove", handleTouchMove);
+            document.removeEventListener("touchend", handleTouchEnd);
+
+            // Commit final position
+            setPreviewLayout(prev => {
+                const finalItem = prev[widget.id];
+                if (finalItem && currentDashboard) {
+                    const currentLayout = currentDashboard.widgets.map(w => w.layout || { i: w.id, x: 0, y: 0, w: 4, h: 3 });
+                    const nextLayout = currentLayout.map(item =>
+                        item.i === widget.id ? finalItem : item
+                    );
+                    const resolved = resolveLayout(nextLayout, widget.id);
+                    updateLayout(resolved);
+                }
+
+                const newPreview = { ...prev };
+                delete newPreview[widget.id];
+                return newPreview;
+            });
+        };
+
+        document.addEventListener("touchmove", handleTouchMove, { passive: false });
+        document.addEventListener("touchend", handleTouchEnd);
+    };
+
     if (!currentDashboard) return null;
 
     const { widgets } = currentDashboard;
 
     // Render different widget types
     const renderWidgetContent = (widget: Widget) => {
-        const height = ((widget.layout?.h || 3) * CELL_HEIGHT) - 60;
+        // Responsive height calculation
+        const widgetHeight = isMobile 
+            ? ((widget.layout?.h || 3) * cellHeight) - (isEditing ? 50 : 20)
+            : ((widget.layout?.h || 3) * cellHeight) - 60;
+        const height = Math.max(200, widgetHeight); // Minimum height for charts
 
         switch (widget.type) {
             case "chart":
@@ -1037,59 +1259,88 @@ export function DashboardGrid() {
                 const isTypeChanged = overrideType && overrideType !== baseChartConfig.type;
 
                 return (
-                    <div className="w-full h-full flex flex-col">
-                        {/* Chart Type Selector - Always visible */}
-                        <div className="flex items-center justify-between px-2 py-1 border-b bg-slate-50/80 dark:bg-slate-900/50">
-                            <span className="text-xs font-medium text-slate-600 dark:text-slate-400 truncate max-w-[120px]">
-                                {chartConfig.name || 'Chart'}
-                            </span>
-                            <div className="flex items-center gap-1">
-                                <Select
-                                    value={currentChartType}
-                                    onValueChange={handleChartTypeChange}
-                                >
-                                    <SelectTrigger className="h-6 text-[10px] w-[90px] bg-white dark:bg-slate-800">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {CHART_TYPES.map(ct => (
-                                            <SelectItem key={ct.value} value={ct.value} className="text-xs">
-                                                {ct.label}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                {isTypeChanged && (
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-6 w-6 p-0 text-orange-500 hover:text-orange-600"
-                                        onClick={() => handleChartTypeChange('reset')}
-                                        title="Khôi phục kiểu gốc"
+                    <div className={cn(
+                        "w-full h-full flex flex-col overflow-hidden",
+                        isMobile && "p-1" // Add padding on mobile
+                    )}>
+                        {/* Chart Type Selector - Responsive */}
+                        {!isEditing && (
+                            <div className={cn(
+                                "flex items-center justify-between border-b bg-slate-50/80 dark:bg-slate-900/50",
+                                isMobile ? "px-2 py-2" : "px-2 py-1"
+                            )}>
+                                <span className={cn(
+                                    "font-medium text-slate-600 dark:text-slate-400 truncate",
+                                    isMobile ? "text-sm max-w-[140px]" : "text-xs max-w-[120px]"
+                                )}>
+                                    {chartConfig.name || 'Chart'}
+                                </span>
+                                <div className={cn(
+                                    "flex items-center gap-1",
+                                    isMobile && "gap-2"
+                                )}>
+                                    <Select
+                                        value={currentChartType}
+                                        onValueChange={handleChartTypeChange}
                                     >
-                                        <X className="h-3 w-3" />
-                                    </Button>
-                                )}
+                                        <SelectTrigger className={cn(
+                                            "bg-white dark:bg-slate-800",
+                                            isMobile ? "h-8 text-xs w-[110px]" : "h-6 text-[10px] w-[90px]"
+                                        )}>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {CHART_TYPES.map(ct => (
+                                                <SelectItem key={ct.value} value={ct.value} className="text-xs">
+                                                    {ct.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    {isTypeChanged && (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className={cn(
+                                                "p-0 text-orange-500 hover:text-orange-600",
+                                                isMobile ? "h-8 w-8" : "h-6 w-6"
+                                            )}
+                                            onClick={() => handleChartTypeChange('reset')}
+                                            title="Khôi phục kiểu gốc"
+                                        >
+                                            <X className={isMobile ? "h-4 w-4" : "h-3 w-3"} />
+                                        </Button>
+                                    )}
+                                </div>
                             </div>
-                        </div>
-                        <div className="flex-1 min-h-0">
+                        )}
+                        <div className="flex-1 min-h-0 overflow-hidden">
                             {chartData.length > 0 ? (
-                                <InteractiveChart
-                                    config={chartConfig}
-                                    data={chartData}
-                                    chartId={widget.id}
-                                    height={Math.max(100, height - 28)}
-                                    // Drill-down: re-query with WHERE filter
-                                    onDrillDown={handleChartDrillDown}
-                                    // Enable cross-filtering between charts
-                                    enableCrossFilter={true}
-                                    crossFilterField={xAxisField}
-                                />
+                                <div className={cn(
+                                    "w-full h-full",
+                                    isMobile && "overflow-x-auto" // Allow horizontal scroll for wide charts
+                                )}>
+                                    <InteractiveChart
+                                        config={chartConfig}
+                                        data={chartData}
+                                        chartId={widget.id}
+                                        width="100%"
+                                        height={Math.max(isMobile ? 250 : 100, height - (isEditing ? 0 : isMobile ? 50 : 28))}
+                                        // Drill-down: re-query with WHERE filter
+                                        onDrillDown={handleChartDrillDown}
+                                        // Enable cross-filtering between charts
+                                        enableCrossFilter={true}
+                                        crossFilterField={xAxisField}
+                                    />
+                                </div>
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center">
                                     <div className="text-center text-[#94A3B8]">
-                                        <BarChart3 className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                                        <p className="text-xs">Đang tải...</p>
+                                        <BarChart3 className={cn(
+                                            "mx-auto mb-2 opacity-50",
+                                            isMobile ? "h-10 w-10" : "h-8 w-8"
+                                        )} />
+                                        <p className={isMobile ? "text-sm" : "text-xs"}>Đang tải...</p>
                                     </div>
                                 </div>
                             )}
@@ -1097,27 +1348,38 @@ export function DashboardGrid() {
                     </div>
                 );
             case "kpi":
+                const kpiTitle = (widget.config as any).title;
+                const kpiValue = (widget.config as any).value || 0;
                 return (
-                    <div className="flex flex-col items-center justify-center h-full p-4 text-center">
-                        <span className="text-sm text-[#64748B] mb-1">{(widget.config as any).title}</span>
-                        <span className="text-3xl font-bold text-[#0F172A]">{(widget.config as any).value || 0}</span>
+                    <div className="h-full w-full">
+                        <StatCard
+                            title={kpiTitle}
+                            metrics={[{
+                                label: kpiTitle,
+                                value: kpiValue,
+                                type: 'number',
+                                color: '#0066FF'
+                            }]}
+                            className="h-full border-0 shadow-none p-4"
+                        />
                     </div>
                 );
             case "stats":
-                const trendUp = (widget.config as any).trendUp;
+                const statsConfig = widget.config as any;
+                const trendUp = statsConfig.trendUp;
                 return (
-                    <div className="flex flex-col h-full p-4 justify-between">
-                        <span className="text-sm text-[#64748B] font-medium">{(widget.config as any).title}</span>
-                        <div className="flex items-end justify-between">
-                            <span className="text-3xl font-bold text-[#0F172A]">{(widget.config as any).value}</span>
-                            {(widget.config as any).trend && (
-                                <span className={cn("text-xs font-bold px-2 py-1 rounded-full",
-                                    trendUp ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                                )}>
-                                    {(widget.config as any).trend}
-                                </span>
-                            )}
-                        </div>
+                    <div className="h-full w-full">
+                        <StatCard
+                            title={statsConfig.title}
+                            metrics={[{
+                                label: statsConfig.title,
+                                value: statsConfig.value,
+                                change: statsConfig.trend,
+                                isPositive: trendUp,
+                                type: 'number',
+                            }]}
+                            className="h-full border-0 shadow-none p-4"
+                        />
                     </div>
                 );
             case "image":
@@ -1179,21 +1441,42 @@ export function DashboardGrid() {
         }
     };
 
-    // Calculate absolute position for widget
+    // Calculate absolute position for widget - responsive
     const getWidgetStyle = (layout: LayoutItem | undefined) => {
         const x = layout?.x || 0;
         const y = layout?.y || 0;
         const w = layout?.w || 4;
         const h = layout?.h || 3;
 
-        const cellWidth = (containerWidth - (GRID_COLS - 1) * GAP) / GRID_COLS;
+        // On mobile: stack widgets vertically, full width
+        if (isMobile) {
+            // Calculate vertical stacking position
+            const widgetIndex = widgets.findIndex(w => w.layout?.i === layout?.i);
+            let stackedY = 0;
+            for (let i = 0; i < widgetIndex; i++) {
+                const prevWidget = widgets[i];
+                const prevH = prevWidget.layout?.h || 3;
+                stackedY += prevH * cellHeight + gap;
+            }
+
+            return {
+                position: "absolute" as const,
+                left: 0,
+                top: stackedY,
+                width: "100%",
+                height: h * cellHeight + (h - 1) * gap,
+            };
+        }
+
+        // Desktop: use grid layout
+        const cellWidth = (containerWidth - (gridCols - 1) * gap) / gridCols;
 
         return {
             position: "absolute" as const,
-            left: x * (cellWidth + GAP),
-            top: y * (CELL_HEIGHT + GAP),
-            width: w * cellWidth + (w - 1) * GAP,
-            height: h * CELL_HEIGHT + (h - 1) * GAP,
+            left: x * (cellWidth + gap),
+            top: y * (cellHeight + gap),
+            width: w * cellWidth + (w - 1) * gap,
+            height: h * cellHeight + (h - 1) * gap,
         };
     };
 
@@ -1209,7 +1492,13 @@ export function DashboardGrid() {
         return `(${x},${y})`;
     };
 
-    const gridHeight = gridRows * CELL_HEIGHT + (gridRows - 1) * GAP;
+    // Calculate grid height - responsive
+    const gridHeight = isMobile
+        ? widgets.reduce((total, widget) => {
+            const h = widget.layout?.h || 3;
+            return total + (h * cellHeight + gap);
+        }, 0)
+        : gridRows * cellHeight + (gridRows - 1) * gap;
 
     // Get all chart widget IDs for cross-filter linking
     const chartWidgetIds = widgets
@@ -1240,22 +1529,27 @@ export function DashboardGrid() {
                 className={cn(
                     "rounded-lg transition-all relative",
                     isEditing && "bg-[#F8FAFC]",
-                    isOver && "ring-4 ring-[#0052CC]/40 bg-[#0052CC]/5"
+                    isOver && "ring-4 ring-[#0052CC]/40 bg-[#0052CC]/5",
+                    isMobile && "overflow-x-hidden" // Prevent horizontal scroll on mobile
                 )}
-                style={{ minHeight: Math.max(500, gridHeight + 100) }}
+                style={{ 
+                    minHeight: Math.max(500, gridHeight + 100),
+                    width: "100%",
+                    maxWidth: "100%",
+                }}
             >
-                {/* Grid background */}
-                {isEditing && (
+                {/* Grid background - responsive */}
+                {isEditing && !isMobile && (
                     <div
                         className="absolute inset-0 pointer-events-none"
                         style={{
                             display: "grid",
-                            gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)`,
-                            gridAutoRows: `${CELL_HEIGHT}px`,
-                            gap: `${GAP}px`,
+                            gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
+                            gridAutoRows: `${cellHeight}px`,
+                            gap: `${gap}px`,
                         }}
                     >
-                        {Array.from({ length: GRID_COLS * gridRows }).map((_, i) => (
+                        {Array.from({ length: gridCols * gridRows }).map((_, i) => (
                             <div
                                 key={i}
                                 className="border border-[#CBD5E1] rounded bg-white/60"
@@ -1288,11 +1582,15 @@ export function DashboardGrid() {
                                 )}
                                 style={getWidgetStyle(previewLayout[widget.id] || widget.layout)}
                             >
-                                {/* Widget Header */}
+                                {/* Widget Header - responsive with touch support */}
                                 {isEditing && (
                                     <div
-                                        className="absolute top-0 left-0 right-0 h-7 bg-[#0052CC] z-20 flex items-center justify-between px-2 cursor-move"
-                                        onMouseDown={(e) => handleWidgetMouseDown(widget, e)}
+                                        className={cn(
+                                            "absolute top-0 left-0 right-0 bg-[#0052CC] z-20 flex items-center justify-between px-2",
+                                            isMobile ? "h-10 cursor-grab active:cursor-grabbing" : "h-7 cursor-move"
+                                        )}
+                                        onMouseDown={(e) => !isMobile && handleWidgetMouseDown(widget, e)}
+                                        onTouchStart={(e) => isMobile && handleWidgetTouchStart(widget, e)}
                                     >
                                         <div className="flex items-center gap-2">
                                             <Move className="h-3 w-3 text-white/70" />
@@ -1302,11 +1600,14 @@ export function DashboardGrid() {
                                         </div>
 
                                         <div className="flex gap-0.5">
-                                            {/* Edit Button */}
+                                            {/* Edit Button - Touch-friendly */}
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
-                                                className="h-5 w-5 text-white hover:bg-white/20"
+                                                className={cn(
+                                                    "text-white hover:bg-white/20 active:bg-white/30",
+                                                    isMobile ? "h-8 w-8" : "h-5 w-5"
+                                                )}
                                                 onMouseDown={(e) => e.stopPropagation()}
                                                 onClick={(e) => {
                                                     e.stopPropagation();
@@ -1314,14 +1615,17 @@ export function DashboardGrid() {
                                                 }}
                                                 title="Chỉnh sửa"
                                             >
-                                                <Edit2 className="h-3 w-3" />
+                                                <Edit2 className={isMobile ? "h-4 w-4" : "h-3 w-3"} />
                                             </Button>
 
-                                            {/* Clone Button */}
+                                            {/* Clone Button - Touch-friendly */}
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
-                                                className="h-5 w-5 text-white hover:bg-white/20"
+                                                className={cn(
+                                                    "text-white hover:bg-white/20 active:bg-white/30",
+                                                    isMobile ? "h-8 w-8" : "h-5 w-5"
+                                                )}
                                                 onMouseDown={(e) => e.stopPropagation()}
                                                 onClick={(e) => {
                                                     e.stopPropagation();
@@ -1329,15 +1633,18 @@ export function DashboardGrid() {
                                                 }}
                                                 title="Nhân bản"
                                             >
-                                                <Copy className="h-3 w-3" />
+                                                <Copy className={isMobile ? "h-4 w-4" : "h-3 w-3"} />
                                             </Button>
 
-                                            {/* Size Menu */}
+                                            {/* Size Menu - Touch-friendly */}
                                             <div className="relative">
                                                 <Button
                                                     variant="ghost"
                                                     size="icon"
-                                                    className="h-5 w-5 text-white hover:bg-white/20"
+                                                    className={cn(
+                                                        "text-white hover:bg-white/20 active:bg-white/30",
+                                                        isMobile ? "h-8 w-8" : "h-5 w-5"
+                                                    )}
                                                     onMouseDown={(e) => e.stopPropagation()}
                                                     onClick={(e) => {
                                                         e.stopPropagation();
@@ -1345,7 +1652,7 @@ export function DashboardGrid() {
                                                     }}
                                                     title="Kích thước"
                                                 >
-                                                    <Maximize2 className="h-3 w-3" />
+                                                    <Maximize2 className={isMobile ? "h-4 w-4" : "h-3 w-3"} />
                                                 </Button>
 
                                                 {showSizeMenu === widget.id && (
@@ -1397,19 +1704,39 @@ export function DashboardGrid() {
                                             </div>
 
                                             {/* Delete Button */}
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-5 w-5 text-white hover:bg-red-500"
-                                                onMouseDown={(e) => e.stopPropagation()}
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    removeWidget(widget.id);
-                                                }}
-                                                title="Xóa"
-                                            >
-                                                <X className="h-3 w-3" />
-                                            </Button>
+                                            {/* Delete Button with Confirmation */}
+                                            <Popover>
+                                                <PopoverTrigger asChild>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-5 w-5 text-white hover:bg-red-500"
+                                                        onMouseDown={(e) => e.stopPropagation()}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        title="Xóa"
+                                                    >
+                                                        <X className="h-3 w-3" />
+                                                    </Button>
+                                                </PopoverTrigger>
+                                                <PopoverContent className="w-60 p-3" align="end" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+                                                    <div className="space-y-2">
+                                                        <h4 className="font-medium text-sm text-slate-900">Xóa Widget?</h4>
+                                                        <div className="flex justify-end gap-2">
+                                                            <Button
+                                                                variant="destructive"
+                                                                size="sm"
+                                                                className="h-7 text-xs"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    removeWidget(widget.id);
+                                                                }}
+                                                            >
+                                                                Xóa
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                </PopoverContent>
+                                            </Popover>
                                         </div>
                                     </div>
                                 )}

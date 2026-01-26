@@ -11,6 +11,8 @@ import { DynamicChart } from "@/components/charts/DynamicChart";
 import { InteractiveChart, DrillFilter } from "@/components/charts/InteractiveChart";
 import { CrossFilterProvider } from "@/components/charts/CrossFilterProvider";
 import { cn } from "@/lib/utils";
+import { useIsMobile, useIsTablet } from "@/hooks/use-responsive";
+import { processChartData, buildChartDataRequest, createCompositeLabel } from "@/lib/chart-data-utils";
 import type { Dashboard, Widget, LayoutItem, ChartConfig } from "@/types";
 import { DateRange } from "react-day-picker";
 
@@ -19,7 +21,9 @@ interface SharePageProps {
 }
 
 const GRID_COLS = 12;
+const GRID_COLS_MOBILE = 1; // Single column on mobile
 const GAP = 16;
+const GAP_MOBILE = 12; // Smaller gap on mobile
 
 // Chart types for selector
 const CHART_TYPES = [
@@ -72,13 +76,19 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+    const isMobile = useIsMobile();
+    const isTablet = useIsTablet();
+
     // Dynamic cell height based on container width for responsive scaling
     const getCellHeight = () => {
+        if (isMobile) return 50;
         if (containerWidth < 600) return 50;
         if (containerWidth < 900) return 55;
         return 60;
     };
     const CELL_HEIGHT = getCellHeight();
+    const gridCols = isMobile ? GRID_COLS_MOBILE : GRID_COLS;
+    const gap = isMobile ? GAP_MOBILE : GAP;
 
     // Measure container width
     useEffect(() => {
@@ -98,7 +108,13 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
     useEffect(() => {
         const loadDashboard = async () => {
             try {
-                const response = await fetch(`/api/public/dashboards/${id}`);
+                const token = searchParams.get('token');
+                const auth = searchParams.get('auth');
+                const query = new URLSearchParams();
+                if (token) query.set('token', token);
+                if (auth) query.set('auth', auth);
+
+                const response = await fetch(`/api/public/dashboards/${id}?${query.toString()}`);
                 const result = await response.json();
 
                 if (result.success && result.data) {
@@ -204,60 +220,17 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
 
                 // Aggregate data if xAxis and yAxis are provided
                 let processedData = rawData;
-                if (xAxis && yAxis.length > 0) {
-                    // Build group key from xAxis + groupBy
-                    const groupByArr = Array.isArray(groupByFields) ? groupByFields : groupByFields ? [groupByFields] : [];
-                    const groupFields = [xAxis, ...groupByArr];
-
-                    const groups: Record<string, Record<string, unknown>> = {};
-                    rawData.forEach(row => {
-                        const key = groupFields.map(f => String(row[f] || '')).join('|||');
-                        if (!groups[key]) {
-                            groups[key] = {};
-                            groupFields.forEach(f => { groups[key][f] = row[f]; });
-                            yAxis.forEach(y => { groups[key][y] = 0; });
-                            groups[key]._count = 0;
-                            // Create composite label if groupBy exists
-                            if (groupByArr.length > 0) {
-                                const labelParts = [String(row[xAxis] || ''), ...groupByArr.map(g => String(row[g] || ''))];
-                                groups[key]._compositeLabel = labelParts.join(' - ');
-                            }
-                        }
-                        (groups[key]._count as number)++;
-                        yAxis.forEach(y => {
-                            const val = Number(row[y]) || 0;
-                            (groups[key][y] as number) += val;
-                        });
-                    });
-                    processedData = Object.values(groups);
-
-                    // If groupBy exists, override xAxis value with composite label
-                    if (groupByArr.length > 0) {
-                        processedData = processedData.map(row => ({
-                            ...row,
-                            [xAxis as string]: row._compositeLabel || row[xAxis as string],
-                        }));
-                    }
-                }
-
-                // Apply sorting
-                if (orderByField) {
-                    processedData = [...processedData].sort((a, b) => {
-                        const aVal = a[orderByField];
-                        const bVal = b[orderByField];
-                        if (typeof aVal === 'number' && typeof bVal === 'number') {
-                            return orderDir === 'asc' ? aVal - bVal : bVal - aVal;
-                        }
-                        return orderDir === 'asc'
-                            ? String(aVal || '').localeCompare(String(bVal || ''))
-                            : String(bVal || '').localeCompare(String(aVal || ''));
-                    });
-                }
-
-                // Apply limit
-                if (limitNum > 0) {
-                    processedData = processedData.slice(0, limitNum);
-                }
+                // Process data using shared utility
+                processedData = processChartData(rawData, {
+                    xAxis,
+                    yAxis,
+                    aggregation: config.dataSource.aggregation || 'sum',
+                    groupBy: groupByFields,
+                    orderBy: orderByField,
+                    orderDirection: orderDir,
+                    limit: limitNum,
+                    drillDownLabelField: config.dataSource.drillDownLabelField,
+                });
 
                 setChartDataCache(prev => ({
                     ...prev,
@@ -284,26 +257,13 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                     filters.push({ field: endCol, operator: '<=', value: dateRange.to.toISOString().split('T')[0] });
                 }
 
-                const { queryMode, customQuery, connectionId } = config.dataSource;
-
-                const requestBody: any = {
-                    table: config.dataSource.table,
-                    xAxis: config.dataSource.xAxis,
-                    yAxis: config.dataSource.yAxis,
-                    aggregation: config.dataSource.aggregation || "sum",
-                    groupBy: config.dataSource.groupBy || undefined, // Send groupBy to API
-                    orderBy: config.dataSource.orderBy,
-                    orderDirection: config.dataSource.orderDirection,
-                    limit: config.dataSource.limit || 50,
-                    filters,
-
-                    connectionId,
-                };
-
-                // Custom SQL mode
-                if (queryMode === 'custom' && customQuery) {
-                    requestBody.customQuery = customQuery;
-                }
+                // Build request body using shared utility
+                const requestBody = buildChartDataRequest(config.dataSource, {
+                    dateRange: {
+                        from: dateRange?.from,
+                        to: dateRange?.to,
+                    },
+                });
 
                 const response = await fetch("/api/database/chart-data", {
                     method: "POST",
@@ -392,7 +352,12 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                     }));
                 }
             } catch (error) {
-                console.error("Error fetching chart data:", error);
+                // Log error (sanitized - no sensitive data)
+                if (error instanceof Error) {
+                    console.error("Error fetching chart data:", error.message);
+                } else {
+                    console.error("Error fetching chart data:", String(error));
+                }
             }
         };
 
@@ -535,35 +500,52 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                 const groupByArr = Array.isArray(groupByFields) ? groupByFields : groupByFields ? [groupByFields] : [];
 
                 // Modify the custom query to add WHERE conditions for drill filters
-                let customQuery = config.dataSource.customQuery;
+                // IMPORTANT: We send filters as separate parameters to API for safe parameterized queries
+                // The API will handle building safe WHERE clauses
+                const customQuery = config.dataSource.customQuery;
 
-                // Build WHERE conditions
-                const whereConditions: string[] = [];
+                // Build safe filter array for API
+                const safeFilters: Array<{ field: string; operator: string; value: string | number }> = [];
+                
                 drillFilters.forEach(f => {
-                    const value = typeof f.value === 'string' ? `N'${f.value}'` : f.value;
-                    whereConditions.push(`[${f.field}] = ${value}`);
+                    // Validate field name (sanitize)
+                    const sanitizedField = f.field.replace(/[^a-zA-Z0-9_\[\]]/g, '');
+                    if (sanitizedField && sanitizedField === f.field) {
+                        safeFilters.push({
+                            field: sanitizedField,
+                            operator: f.operator || '=',
+                            value: f.value,
+                        });
+                    }
                 });
 
-                // Add global date filters
+                // Add global date filters as safe parameters
                 const startCol = config.dataSource.startDateColumn;
                 const endCol = config.dataSource.endDateColumn;
 
                 if (startCol && dateRange?.from) {
-                    const fromDate = dateRange.from.toISOString().split('T')[0];
-                    whereConditions.push(`[${startCol}] >= '${fromDate}'`);
+                    const sanitizedStartCol = startCol.replace(/[^a-zA-Z0-9_\[\]]/g, '');
+                    if (sanitizedStartCol === startCol) {
+                        const fromDate = dateRange.from.toISOString().split('T')[0];
+                        safeFilters.push({
+                            field: sanitizedStartCol,
+                            operator: '>=',
+                            value: fromDate,
+                        });
+                    }
                 }
 
                 if (endCol && dateRange?.to) {
-                    const toDate = dateRange.to.toISOString().split('T')[0];
-                    whereConditions.push(`[${endCol}] <= '${toDate}'`);
+                    const sanitizedEndCol = endCol.replace(/[^a-zA-Z0-9_\[\]]/g, '');
+                    if (sanitizedEndCol === endCol) {
+                        const toDate = dateRange.to.toISOString().split('T')[0];
+                        safeFilters.push({
+                            field: sanitizedEndCol,
+                            operator: '<=',
+                            value: toDate,
+                        });
+                    }
                 }
-
-                // Wrap custom query as subquery and add WHERE
-                if (whereConditions.length > 0) {
-                    customQuery = `SELECT * FROM (${customQuery}) AS _drill_sub WHERE ${whereConditions.join(' AND ')}`;
-                }
-
-                console.log('[Drill-down Custom SQL] Query:', customQuery);
 
                 const response = await fetch("/api/database/chart-data", {
                     method: "POST",
@@ -571,6 +553,7 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                     body: JSON.stringify({
                         customQuery: customQuery.trim(),
                         connectionId: config.dataSource.connectionId,
+                        filters: safeFilters, // Send filters as separate parameterized array
                     }),
                 });
 
@@ -578,70 +561,14 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                 if (result.success && result.data && result.data.length > 0) {
                     let chartData = result.data as Record<string, unknown>[];
 
-                    // Apply same aggregation logic as outer chart (lines 338-402 logic)
+                    // Apply same aggregation logic using shared utility
                     if (xAxisField && yAxisFields.length > 0) {
-                        const groups: Record<string, any> = {};
-                        // Use drillDownLabelField if configured for grouping (Dimension Switching)
-                        const drillLabelField = config.dataSource.drillDownLabelField;
-                        const groupingField = drillLabelField || xAxisField;
-
-                        chartData.forEach(row => {
-                            const keyFields = [groupingField, ...groupByArr];
-                            const key = keyFields.map(f => String(row[f] ?? "")).join("|||");
-                            if (!groups[key]) {
-                                groups[key] = { _count: 0 } as any;
-                                keyFields.forEach(f => { groups[key][f] = row[f]; });
-                                yAxisFields.forEach(y => {
-                                    groups[key][y] =
-                                        aggregation === "min"
-                                            ? Infinity
-                                            : aggregation === "max"
-                                                ? -Infinity
-                                                : 0;
-                                });
-                                // Composite label
-                                if (groupByArr.length > 0) {
-                                    const labelParts = keyFields.map(f => String(row[f] ?? ""));
-                                    groups[key]._compositeLabel = labelParts.join(" - ");
-                                }
-                            }
-                            groups[key]._count++;
-                            yAxisFields.forEach(y => {
-                                const val = Number(row[y]) || 0;
-                                if (aggregation === "sum" || aggregation === "avg") {
-                                    groups[key][y] += val;
-                                } else if (aggregation === "min") {
-                                    groups[key][y] = Math.min(groups[key][y], val);
-                                } else if (aggregation === "max") {
-                                    groups[key][y] = Math.max(groups[key][y], val);
-                                }
-                            });
-                        });
-
-                        chartData = Object.values(groups).map((g: any) => {
-                            const row: any = { ...g };
-                            if (aggregation === "avg") {
-                                yAxisFields.forEach(y => {
-                                    row[y] = row[y] / g._count;
-                                });
-                            } else if (aggregation === "count") {
-                                yAxisFields.forEach(y => {
-                                    row[y] = g._count;
-                                });
-                            }
-                            delete row._count;
-
-                            if (row._compositeLabel && groupingField) {
-                                row[groupingField] = row._compositeLabel;
-                                delete row._compositeLabel;
-                            }
-
-                            // Add name/label for chart display
-                            const displayLabel = row[groupingField] || `#${Object.keys(groups).indexOf(row) + 1}`;
-                            row._label = displayLabel;
-                            row.name = displayLabel;
-
-                            return row;
+                        chartData = processChartData(chartData, {
+                            xAxis: config.dataSource.drillDownLabelField || xAxisField,
+                            yAxis: yAxisFields,
+                            aggregation: aggregation as any,
+                            groupBy: groupByArr,
+                            drillDownLabelField: config.dataSource.drillDownLabelField,
                         });
                     }
 
@@ -649,7 +576,12 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                 }
                 return [];
             } catch (error) {
-                console.error("Error fetching Custom SQL drill-down data:", error);
+                // Log error (sanitized - no sensitive data)
+                if (error instanceof Error) {
+                    console.error("Error fetching Custom SQL drill-down data:", error.message);
+                } else {
+                    console.error("Error fetching Custom SQL drill-down data:", String(error));
+                }
                 return [];
             }
         }
@@ -763,13 +695,22 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
             }
             return [];
         } catch (error) {
-            console.error("Error fetching drill-down data:", error);
+            // Log error (sanitized - no sensitive data)
+            if (error instanceof Error) {
+                console.error("Error fetching drill-down data:", error.message);
+            } else {
+                console.error("Error fetching drill-down data:", String(error));
+            }
             return [];
         }
     }, [dateRange]);
 
     const renderWidgetContent = (widget: Widget) => {
-        const height = ((widget.layout?.h || 3) * CELL_HEIGHT) - 20;
+        // Responsive height calculation
+        const widgetHeight = isMobile 
+            ? ((widget.layout?.h || 3) * CELL_HEIGHT) - 30
+            : ((widget.layout?.h || 3) * CELL_HEIGHT) - 20;
+        const height = Math.max(200, widgetHeight); // Minimum height for charts
 
         switch (widget.type) {
             case "chart":
@@ -808,18 +749,33 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                 const isTypeChanged = overrideType && overrideType !== baseChartConfig.type;
 
                 return (
-                    <div className="w-full h-full flex flex-col">
-                        {/* Chart Type Selector */}
-                        <div className="flex items-center justify-between px-3 py-1.5 border-b bg-slate-50/80">
-                            <span className="text-xs font-medium text-slate-600 truncate max-w-[150px]">
+                    <div className={cn(
+                        "w-full h-full flex flex-col overflow-hidden",
+                        isMobile && "p-1" // Add padding on mobile
+                    )}>
+                        {/* Chart Type Selector - Responsive */}
+                        <div className={cn(
+                            "flex items-center justify-between border-b bg-slate-50/80",
+                            isMobile ? "px-2 py-2" : "px-3 py-1.5"
+                        )}>
+                            <span className={cn(
+                                "font-medium text-slate-600 truncate",
+                                isMobile ? "text-sm max-w-[140px]" : "text-xs max-w-[150px]"
+                            )}>
                                 {chartConfig.name || 'Chart'}
                             </span>
-                            <div className="flex items-center gap-1">
+                            <div className={cn(
+                                "flex items-center gap-1",
+                                isMobile && "gap-2"
+                            )}>
                                 <Select
                                     value={currentChartType}
                                     onValueChange={handleChartTypeChange}
                                 >
-                                    <SelectTrigger className="h-6 text-[10px] w-[80px] bg-white">
+                                    <SelectTrigger className={cn(
+                                        "bg-white",
+                                        isMobile ? "h-8 text-xs w-[110px]" : "h-6 text-[10px] w-[80px]"
+                                    )}>
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -834,34 +790,50 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                                     <Button
                                         variant="ghost"
                                         size="sm"
-                                        className="h-6 w-6 p-0 text-orange-500 hover:text-orange-600"
+                                        className={cn(
+                                            "p-0 text-orange-500 hover:text-orange-600",
+                                            isMobile ? "h-8 w-8" : "h-6 w-6"
+                                        )}
                                         onClick={() => handleChartTypeChange('reset')}
                                         title="Khôi phục"
                                     >
-                                        <X className="h-3 w-3" />
+                                        <X className={isMobile ? "h-4 w-4" : "h-3 w-3"} />
                                     </Button>
                                 )}
                             </div>
                         </div>
-                        <div className="flex-1 min-h-0 p-2">
+                        <div className={cn(
+                            "flex-1 min-h-0 overflow-hidden",
+                            isMobile ? "p-1" : "p-2"
+                        )}>
                             {chartData.length > 0 ? (
-                                <InteractiveChart
-                                    config={chartConfig}
-                                    data={chartData}
-                                    chartId={widget.id}
-                                    height={Math.max(80, height - 32)}
-                                    onDrillDown={handleChartDrillDown}
-                                    enableCrossFilter={false}
-                                    crossFilterField={xAxisField}
-                                />
+                                <div className={cn(
+                                    "w-full h-full",
+                                    isMobile && "overflow-x-auto" // Allow horizontal scroll for wide charts
+                                )}>
+                                    <InteractiveChart
+                                        config={chartConfig}
+                                        data={chartData}
+                                        chartId={widget.id}
+                                        width="100%"
+                                        height={Math.max(isMobile ? 250 : 80, height - (isMobile ? 50 : 32))}
+                                        onDrillDown={handleChartDrillDown}
+                                        enableCrossFilter={false}
+                                        crossFilterField={xAxisField}
+                                    />
+                                </div>
                             ) : (
-                                <DynamicChart
-                                    config={chartConfig}
-                                    data={[]}
-                                    height={Math.max(80, height - 32)}
-                                    enableFilter={true}
-                                    onFilterChange={() => {}}
-                                />
+                                <div className={cn(
+                                    "w-full h-full",
+                                    isMobile && "overflow-x-auto"
+                                )}>
+                                    <DynamicChart
+                                        config={chartConfig}
+                                        data={[]}
+                                        width="100%"
+                                        height={Math.max(isMobile ? 250 : 80, height - (isMobile ? 50 : 32))}
+                                    />
+                                </div>
                             )}
                         </div>
                     </div>
@@ -892,20 +864,44 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
         }
     };
 
-    const getWidgetStyle = (layout: LayoutItem | undefined, containerWidth: number) => {
+    const getWidgetStyle = (layout: LayoutItem | undefined, containerWidth: number, widgetIndex: number) => {
         const x = layout?.x || 0;
         const y = layout?.y || 0;
         const w = layout?.w || 4;
         const h = layout?.h || 3;
 
-        const cellWidth = (containerWidth - (GRID_COLS - 1) * GAP) / GRID_COLS;
+        // On mobile: stack widgets vertically, full width
+        if (isMobile) {
+            // Calculate vertical stacking position
+            let stackedY = 0;
+            const displayWidgets = activeTabId
+                ? dashboard?.tabs?.find(t => t.id === activeTabId)?.widgets || []
+                : dashboard?.widgets || [];
+            
+            for (let i = 0; i < widgetIndex; i++) {
+                const prevWidget = displayWidgets[i];
+                const prevH = prevWidget?.layout?.h || 3;
+                stackedY += prevH * CELL_HEIGHT + gap;
+            }
+
+            return {
+                position: "absolute" as const,
+                left: 0,
+                top: stackedY,
+                width: "100%",
+                height: h * CELL_HEIGHT + (h - 1) * gap,
+            };
+        }
+
+        // Desktop: use grid layout
+        const cellWidth = (containerWidth - (gridCols - 1) * gap) / gridCols;
 
         return {
             position: "absolute" as const,
-            left: x * (cellWidth + GAP),
-            top: y * (CELL_HEIGHT + GAP),
-            width: w * cellWidth + (w - 1) * GAP,
-            height: h * CELL_HEIGHT + (h - 1) * GAP,
+            left: x * (cellWidth + gap),
+            top: y * (CELL_HEIGHT + gap),
+            width: w * cellWidth + (w - 1) * gap,
+            height: h * CELL_HEIGHT + (h - 1) * gap,
         };
     };
 
@@ -946,7 +942,10 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
     const gridHeight = maxRow * CELL_HEIGHT + (maxRow - 1) * GAP;
 
     return (
-        <div className="min-h-screen bg-[#F8FAFC]">
+        <div className={cn(
+            "min-h-screen bg-[#F8FAFC]",
+            isMobile && "pb-4" // Add bottom padding on mobile
+        )}>
             {/* Header */}
             <div className="bg-white border-b border-[#E2E8F0] px-4 md:px-6 py-4 sticky top-0 z-50 shadow-sm">
                 <div className="w-full px-[7.5%]">
@@ -1071,24 +1070,46 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                     )}
                 >
                     <div
-                        className="relative transition-all duration-300 ease-in-out w-full bg-white rounded-xl shadow-sm p-4"
+                        className={cn(
+                            "relative transition-all duration-300 ease-in-out w-full bg-white rounded-xl shadow-sm",
+                            isMobile ? "p-2" : "p-4",
+                            isMobile && "overflow-x-hidden" // Prevent horizontal scroll
+                        )}
                     >
                         {validWidgets.length === 0 ? (
                             <div className="flex items-center justify-center h-[400px] border-2 border-dashed border-[#E2E8F0] rounded-xl">
                                 <p className="text-[#94A3B8]">Tab này chưa có widget nào</p>
                             </div>
                         ) : (
-                            validWidgets.map((widget) => (
-                                <Card
-                                    key={widget.id}
-                                    className="overflow-hidden bg-white shadow-md border-[#E2E8F0] hover:shadow-lg transition-shadow"
-                                    style={getWidgetStyle(widget.layout, containerWidth)}
-                                >
-                                    <CardContent className="p-0 h-full">
-                                        {renderWidgetContent(widget)}
-                                    </CardContent>
-                                </Card>
-                            ))
+                            <div
+                                className={cn(
+                                    "relative",
+                                    isMobile && "overflow-x-hidden" // Prevent horizontal scroll
+                                )}
+                                style={{ 
+                                    height: gridHeight,
+                                    width: "100%",
+                                    maxWidth: "100%",
+                                }}
+                            >
+                                {validWidgets.map((widget, index) => (
+                                    <Card
+                                        key={widget.id}
+                                        className={cn(
+                                            "overflow-hidden bg-white shadow-md border-[#E2E8F0] hover:shadow-lg transition-shadow",
+                                            isMobile && "rounded-lg mx-2" // Add margin on mobile
+                                        )}
+                                        style={getWidgetStyle(widget.layout, containerWidth, index)}
+                                    >
+                                        <CardContent className={cn(
+                                            "p-0 h-full",
+                                            isMobile && "overflow-x-auto" // Allow horizontal scroll if needed
+                                        )}>
+                                            {renderWidgetContent(widget)}
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
                         )}
                     </div>
                 </div>

@@ -55,7 +55,7 @@ export interface PieChartProps extends BaseChartProps {
     valueKey: string;
     styleProps: ChartStyleProps;
     innerRadius?: number;
-    pieVariant?: 'default' | 'sized';
+    pieVariant?: 'default' | 'sized' | 'donut';
 }
 
 export interface CardChartProps {

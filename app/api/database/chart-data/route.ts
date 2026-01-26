@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getPool, getPoolById } from '@/lib/db';
+import { validateSQLQuery } from '@/lib/security/sql-validator';
+import { logger } from '@/lib/security/logger';
 
 export async function POST(request: Request) {
     try {
@@ -17,32 +19,73 @@ export async function POST(request: Request) {
 
         // ============ CUSTOM SQL MODE ============
         if (customQuery && customQuery.trim()) {
-            console.log('[Chart Data API] Executing custom SQL query');
+            logger.info('Executing custom SQL query', { connectionId });
 
-            // Basic SQL injection prevention - only allow SELECT statements
-            const cleanQuery = customQuery.trim().toUpperCase();
-            if (!cleanQuery.startsWith('SELECT')) {
+            // Validate SQL query using secure validator
+            const validation = validateSQLQuery(customQuery);
+            
+            if (!validation.isValid) {
+                logger.warn('Invalid SQL query rejected', { error: validation.error });
                 return NextResponse.json({
                     success: false,
-                    error: 'Chỉ cho phép câu lệnh SELECT',
+                    error: validation.error || 'Query validation failed',
                 }, { status: 400 });
             }
 
-            // Block dangerous keywords
-            const dangerousKeywords = ['DROP', 'DELETE', 'UPDATE', 'INSERT', 'TRUNCATE', 'ALTER', 'CREATE', 'EXEC', 'EXECUTE', 'XP_', 'SP_'];
-            for (const keyword of dangerousKeywords) {
-                if (cleanQuery.includes(keyword)) {
-                    return NextResponse.json({
-                        success: false,
-                        error: `Không được sử dụng từ khóa: ${keyword}`,
-                    }, { status: 400 });
+            // Build safe WHERE clause if filters are provided
+            let finalQuery = validation.sanitizedQuery!;
+            const requestBuilder = pool.request();
+            
+            if (filters && Array.isArray(filters) && filters.length > 0) {
+                // Import sanitizeIdentifier for safe field names
+                const { sanitizeIdentifier } = await import('@/lib/security/sql-validator');
+                
+                const whereConditions: string[] = [];
+                filters.forEach((filter: any, index: number) => {
+                    try {
+                        const sanitizedField = sanitizeIdentifier(filter.field);
+                        const paramName = `filterParam${index}`;
+                        const operator = filter.operator?.toUpperCase() || '=';
+                        
+                        // Validate operator
+                        const validOperators = ['=', '!=', '>', '<', '>=', '<=', 'LIKE', 'IN'];
+                        if (!validOperators.includes(operator)) {
+                            throw new Error(`Invalid operator: ${filter.operator}`);
+                        }
+                        
+                        // Use parameterized query
+                        if (operator === 'IN' && Array.isArray(filter.value)) {
+                            const inParams = filter.value.map((v: any, i: number) => {
+                                const inParamName = `${paramName}_${i}`;
+                                requestBuilder.input(inParamName, v);
+                                return `@${inParamName}`;
+                            }).join(', ');
+                            whereConditions.push(`[${sanitizedField}] IN (${inParams})`);
+                        } else if (operator === 'LIKE') {
+                            requestBuilder.input(paramName, filter.value);
+                            whereConditions.push(`[${sanitizedField}] LIKE @${paramName}`);
+                        } else {
+                            requestBuilder.input(paramName, filter.value);
+                            whereConditions.push(`[${sanitizedField}] ${operator} @${paramName}`);
+                        }
+                    } catch (fieldError) {
+                        logger.warn('Invalid filter field', { field: filter.field, error: fieldError });
+                        // Skip invalid filters
+                    }
+                });
+                
+                if (whereConditions.length > 0) {
+                    // Wrap query as subquery and add WHERE clause
+                    finalQuery = `SELECT * FROM (${finalQuery}) AS _filtered_sub WHERE ${whereConditions.join(' AND ')}`;
                 }
             }
 
-            // Execute custom query
+            // Execute validated and parameterized query
             try {
-                const result = await pool.request().query(customQuery);
-                console.log('[Chart Data API] Custom query returned:', result.recordset.length, 'rows');
+                const result = await requestBuilder.query(finalQuery);
+                logger.info('Custom query executed successfully', { 
+                    rowCount: result.recordset.length 
+                });
 
                 return NextResponse.json({
                     success: true,
@@ -50,7 +93,7 @@ export async function POST(request: Request) {
                     columns: result.recordset.length > 0 ? Object.keys(result.recordset[0]) : [],
                 });
             } catch (sqlError) {
-                console.error('[Chart Data API] Custom SQL error:', sqlError);
+                logger.error('Custom SQL execution error', sqlError instanceof Error ? sqlError : new Error(String(sqlError)));
                 return NextResponse.json({
                     success: false,
                     error: sqlError instanceof Error ? sqlError.message : 'Lỗi thực thi SQL',
@@ -85,12 +128,15 @@ export async function POST(request: Request) {
         const schema = tableCheck.recordset[0].TABLE_SCHEMA;
         const tableName = tableCheck.recordset[0].TABLE_NAME;
 
-        // Fetch column metadata to validate fields
-        const columnsResult = await pool.request().query(`
-            SELECT COLUMN_NAME
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = '${schema}' AND TABLE_NAME = '${tableName}'
-        `);
+        // Fetch column metadata to validate fields (using parameterized query)
+        const columnsResult = await pool.request()
+            .input('schema', schema)
+            .input('tableName', tableName)
+            .query(`
+                SELECT COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = @schema AND TABLE_NAME = @tableName
+            `);
         const availableColumns = new Set(
             columnsResult.recordset.map((row: any) => row.COLUMN_NAME.replace(/[^\w]/g, ''))
         );
@@ -242,7 +288,7 @@ export async function POST(request: Request) {
             ${orderByClause}
         `;
 
-        console.log('Executing chart query:', query);
+        logger.debug('Executing chart query', { table, xAxis, yAxis: validYAxis });
 
         const result = await requestBuilder.query(query);
 
@@ -251,7 +297,7 @@ export async function POST(request: Request) {
             data: result.recordset,
         });
     } catch (error) {
-        console.error('Error fetching chart data:', error);
+        logger.error('Error fetching chart data', error instanceof Error ? error : new Error(String(error)));
         return NextResponse.json({
             success: false,
             error: error instanceof Error ? error.message : 'Failed to fetch chart data',

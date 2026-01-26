@@ -8,7 +8,7 @@ const JWT_SECRET = new TextEncoder().encode(
 );
 
 async function getUserFromToken(request: NextRequest) {
-    const token = request.cookies.get('auth-token')?.value;
+    const token = request.cookies.get('auth_token')?.value;
     if (!token) return null;
 
     try {
@@ -116,10 +116,10 @@ export async function GET(
                         userId: m.userId?.toString(),
                         user: memberDetail
                             ? {
-                                  _id: memberDetail._id?.toString(),
-                                  name: memberDetail.name,
-                                  email: memberDetail.email,
-                              }
+                                _id: memberDetail._id?.toString(),
+                                name: memberDetail.name,
+                                email: memberDetail.email,
+                            }
                             : null,
                     };
                 }),

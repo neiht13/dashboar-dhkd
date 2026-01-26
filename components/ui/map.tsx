@@ -1,9 +1,12 @@
 "use client";
 
-import MapLibreGL, { type PopupOptions, type MarkerOptions } from "maplibre-gl";
+import MapLibreGL, { type PopupOptions, type MarkerOptions, type StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import dark from "@/lib/dark-matter-gl-style.json";
-import light from "@/lib/positron-gl-style.json";
+import darkStyle from "@/lib/google-satellite-style.json";
+import lightStyle from "@/lib/google-roadmap-style.json";
+
+const dark = darkStyle as unknown as StyleSpecification;
+const light = lightStyle as unknown as StyleSpecification;
 import {
   createContext,
   forwardRef,
@@ -18,7 +21,20 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { X, Minus, Plus, Locate, Maximize, Loader2, Box } from "lucide-react";
+import { X, Minus, Plus, Locate, Maximize, Loader2, Box, Layers, Map as MapIcon, Mountain, Satellite, Navigation, ZoomIn, ZoomOut } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  TooltipProvider,
+} from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 
 import { cn } from "@/lib/utils";
 
@@ -622,7 +638,7 @@ const positionClasses = {
 
 function ControlGroup({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex flex-col rounded-md border border-border bg-background shadow-sm overflow-hidden [&>button:not(:last-child)]:border-b [&>button:not(:last-child)]:border-border">
+    <div className="flex flex-col rounded-lg border border-border bg-background/95 backdrop-blur-sm shadow-lg overflow-hidden">
       {children}
     </div>
   );
@@ -633,27 +649,53 @@ function ControlButton({
   label,
   children,
   disabled = false,
+  active = false,
 }: {
   onClick: () => void;
   label: string;
   children: React.ReactNode;
   disabled?: boolean;
+  active?: boolean;
 }) {
   return (
-    <button
-      onClick={onClick}
-      aria-label={label}
-      type="button"
-      className={cn(
-        "flex items-center justify-center size-8 hover:bg-accent dark:hover:bg-accent/40 transition-colors",
-        disabled && "opacity-50 pointer-events-none cursor-not-allowed"
-      )}
-      disabled={disabled}
-    >
-      {children}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            onClick={onClick}
+            aria-label={label}
+            type="button"
+            className={cn(
+              "flex items-center justify-center h-9 w-9 hover:bg-accent transition-colors border-b border-border last:border-b-0",
+              disabled && "opacity-50 pointer-events-none cursor-not-allowed",
+              active && "bg-accent text-accent-foreground"
+            )}
+            disabled={disabled}
+          >
+            {children}
+          </button>
+        }
+      />
+      <TooltipContent side="left">{label}</TooltipContent>
+    </Tooltip>
   );
 }
+
+const mapStyleOptions = [
+  {
+    id: "default",
+    name: "Mặc định",
+    icon: Box,
+    description: "Theo giao diện",
+  },
+  { id: "streets", name: "Bản đồ đường", icon: MapIcon, description: "Chi tiết đường đi" },
+  {
+    id: "satellite",
+    name: "Vệ tinh",
+    icon: Satellite,
+    description: "Ảnh vệ tinh",
+  },
+] as const;
 
 function MapControls({
   position = "bottom-right",
@@ -667,6 +709,7 @@ function MapControls({
 }: MapControlsProps) {
   const { map } = useMap();
   const [waitingForLocation, setWaitingForLocation] = useState(false);
+  const [currentStyle, setCurrentStyle] = useState<"default" | "streets" | "satellite">("default");
 
   const handleZoomIn = useCallback(() => {
     map?.zoomTo(map.getZoom() + 1, { duration: 300 });
@@ -725,57 +768,172 @@ function MapControls({
     }
   }, [map]);
 
+  const handleStyleChange = useCallback((styleId: "default" | "streets" | "satellite") => {
+    if (!map) return;
+    setCurrentStyle(styleId);
+
+    if (styleId === "streets") {
+      map.setStyle(light);
+    } else if (styleId === "satellite") {
+      map.setStyle(dark);
+    } else {
+      // Default: rely on system theme (handled by Map component effect if implementation allows, 
+      // or we manually check theme here)
+      const theme = getDocumentTheme() || "light";
+      map.setStyle(theme === "dark" ? dark : light);
+    }
+  }, [map]);
+
   return (
     <div
       className={cn(
-        "absolute z-10 flex flex-col gap-1.5",
+        "absolute z-10 flex flex-col gap-2",
         positionClasses[position],
         className
       )}
     >
-      {showZoom && (
-        <ControlGroup>
-          <ControlButton onClick={handleZoomIn} label="Zoom in">
-            <Plus className="size-4" />
-          </ControlButton>
-          <ControlButton onClick={handleZoomOut} label="Zoom out">
-            <Minus className="size-4" />
-          </ControlButton>
-        </ControlGroup>
-      )}
-      {showCompass && (
-        <ControlGroup>
-          <CompassButton onClick={handleResetBearing} />
-        </ControlGroup>
-      )}
-      {showLocate && (
-        <ControlGroup>
-          <ControlButton
-            onClick={handleLocate}
-            label="Find my location"
-            disabled={waitingForLocation}
-          >
-            {waitingForLocation ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Locate className="size-4" />
-            )}
-          </ControlButton>
-        </ControlGroup>
-      )}
-      {showFullscreen && (
-        <ControlGroup>
-          <ControlButton onClick={handleFullscreen} label="Toggle fullscreen">
-            <Maximize className="size-4" />
-          </ControlButton>
-        </ControlGroup>
-      )}
-      {show3D && (
-        <ControlGroup>
-          <ControlButton onClick={handleToggle3D} label="Toggle 3D">
-            <b>3D</b>
-          </ControlButton>
-        </ControlGroup>
+      <div className="flex flex-col gap-1 rounded-lg border bg-background/95 backdrop-blur-sm p-1 shadow-lg">
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 data-[state=open]:bg-accent"
+                    >
+                      <Layers className="h-4 w-4" />
+                    </Button>
+                  }
+                />
+              }
+            />
+            <TooltipContent side="left">Giao diện bản đồ</TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="end" className="w-48">
+            {mapStyleOptions.map((style) => {
+              const Icon = style.icon;
+              return (
+                <DropdownMenuItem
+                  key={style.id}
+                  onClick={() => handleStyleChange(style.id as "default" | "streets" | "satellite")}
+                  className={cn("gap-3", currentStyle === style.id && "bg-accent")}
+                >
+                  <Icon className="size-4 shrink-0" />
+                  <div className="flex flex-col">
+                    <span className="font-medium">{style.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {style.description}
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {showZoom && (
+          <>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleZoomIn}
+                    className="h-9 w-9"
+                  >
+                    <Plus className="size-4" />
+                  </Button>
+                }
+              />
+              <TooltipContent side="left">Phóng to</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleZoomOut}
+                    className="h-9 w-9"
+                  >
+                    <Minus className="size-4" />
+                  </Button>
+                }
+              />
+              <TooltipContent side="left">Thu nhỏ</TooltipContent>
+            </Tooltip>
+          </>
+        )}
+
+        {showLocate && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleLocate}
+                  disabled={waitingForLocation}
+                  className="h-9 w-9"
+                >
+                  {waitingForLocation ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Navigation className="h-4 w-4" />
+                  )}
+                </Button>
+              }
+            />
+            <TooltipContent side="left">Vị trí của tôi</TooltipContent>
+          </Tooltip>
+        )}
+      </div>
+
+      {(showCompass || showFullscreen || show3D) && (
+        <div className="flex flex-col gap-1 rounded-lg border bg-background/95 backdrop-blur-sm p-1 shadow-lg">
+          {showCompass && (
+            <CompassButton onClick={handleResetBearing} />
+          )}
+          {showFullscreen && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleFullscreen}
+                    className="h-9 w-9"
+                  >
+                    <Maximize className="size-4" />
+                  </Button>
+                }
+              />
+              <TooltipContent side="left">Toàn màn hình</TooltipContent>
+            </Tooltip>
+          )}
+          {show3D && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleToggle3D}
+                    className="h-9 w-9"
+                  >
+                    <span className="font-bold text-xs">3D</span>
+                  </Button>
+                }
+              />
+              <TooltipContent side="left">Chế độ 3D</TooltipContent>
+            </Tooltip>
+          )}
+        </div>
       )}
     </div>
   );
