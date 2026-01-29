@@ -149,9 +149,9 @@ export async function POST(request: Request, { params }: RouteParams) {
             createdBy: user._id,
         });
 
-        // Build the public URL
+        // Build the public URL with token
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.BETTER_AUTH_URL || 'http://localhost:3000';
-        const publicUrl = `${baseUrl}/share/${id}`;
+        const publicUrl = `${baseUrl}/share/${id}?token=${token}`;
 
         return NextResponse.json({
             success: true,

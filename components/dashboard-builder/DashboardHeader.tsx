@@ -232,7 +232,7 @@ export function DashboardHeader() {
                                 </div>
                             ) : (
                                 <>
-                                    <h1 className="text-xl font-bold text-[#0F172A]">
+                                    <h1 className="text-xl font-black text-slate-900 uppercase tracking-tight">
                                         {currentDashboard.name}
                                     </h1>
                                     {isEditing && (
@@ -287,14 +287,14 @@ export function DashboardHeader() {
                     <div className="flex items-center gap-2">
                         {/* Layout Mode Toggle */}
                         {isEditing && (
-                            <div className="flex items-center gap-1 bg-[#F1F5F9] rounded-lg p-1">
+                            <div className="flex bg-slate-100 p-1">
                                 <button
                                     onClick={() => updateDashboard(currentDashboard.id, { layoutMode: 'box' })}
                                     className={cn(
-                                        "px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
+                                        "px-3 py-1.5 text-xs font-bold transition-all",
                                         (currentDashboard.layoutMode || 'box') === 'box'
-                                            ? "bg-white text-[#0F172A] shadow-sm"
-                                            : "text-[#64748B] hover:text-[#0F172A]"
+                                            ? "bg-white text-slate-800 shadow-sm"
+                                            : "text-slate-500 hover:text-slate-700"
                                     )}
                                 >
                                     Box
@@ -302,10 +302,10 @@ export function DashboardHeader() {
                                 <button
                                     onClick={() => updateDashboard(currentDashboard.id, { layoutMode: 'full' })}
                                     className={cn(
-                                        "px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
+                                        "px-3 py-1.5 text-xs font-bold transition-all",
                                         currentDashboard.layoutMode === 'full'
-                                            ? "bg-white text-[#0F172A] shadow-sm"
-                                            : "text-[#64748B] hover:text-[#0F172A]"
+                                            ? "bg-white text-slate-800 shadow-sm"
+                                            : "text-slate-500 hover:text-slate-700"
                                     )}
                                 >
                                     Full
@@ -316,7 +316,7 @@ export function DashboardHeader() {
                         <Button
                             variant="outline"
                             size="sm"
-                            className="gap-2"
+                            className="gap-2 rounded-none font-bold"
                             onClick={() => {
                                 setShowShareDialog(true);
                                 handleCreateShareLink();
@@ -329,8 +329,8 @@ export function DashboardHeader() {
                         {/* Delete Dashboard Button */}
                         {isEditing && (
                             <Popover>
-                                <PopoverTrigger asChild>
-                                    <Button variant="destructive" size="sm" className="gap-2">
+                                <PopoverTrigger>
+                                    <Button variant="destructive" size="sm" className="gap-2 rounded-none font-bold">
                                         <Trash2 className="h-4 w-4" />
                                         Xóa
                                     </Button>
@@ -389,10 +389,10 @@ export function DashboardHeader() {
                             ) : (
                                 <button
                                     className={cn(
-                                        "px-4 py-2 text-sm font-medium rounded-t-lg transition-colors whitespace-nowrap flex items-center gap-2",
+                                        "px-4 py-2 text-xs font-bold uppercase tracking-wide transition-all whitespace-nowrap flex items-center gap-2",
                                         activeTabId === tab.id
-                                            ? "bg-[#0052CC] text-white"
-                                            : "bg-[#F1F5F9] text-[#64748B] hover:bg-[#E2E8F0]"
+                                            ? "bg-blue-600 text-white"
+                                            : "bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700"
                                     )}
                                     onClick={() => handleSelectTab(tab.id)}
                                 >
@@ -424,7 +424,7 @@ export function DashboardHeader() {
                                                 }}
                                             >
                                                 <Popover>
-                                                    <PopoverTrigger asChild>
+                                                    <PopoverTrigger>
                                                         <span className="flex items-center justify-center w-full h-full"> {/* Span to handle trigger events properly inside button */}
                                                             <X className="h-2.5 w-2.5" />
                                                         </span>
@@ -458,7 +458,7 @@ export function DashboardHeader() {
                         <Button
                             variant="ghost"
                             size="sm"
-                            className="h-9 px-3 text-[#64748B] hover:text-[#0052CC]"
+                            className="h-9 px-3 text-slate-500 hover:text-blue-600 rounded-none font-bold"
                             onClick={handleAddTab}
                         >
                             <Plus className="h-4 w-4 mr-1" />

@@ -75,7 +75,7 @@ export interface IChartStyle {
 export interface IChart extends Document {
     _id: mongoose.Types.ObjectId;
     name: string;
-    type: 'line' | 'bar' | 'area' | 'pie' | 'radar' | 'scatter' | 'heatmap' | 'donut' | 'stackedBar' | 'horizontalBar' | 'composed' | 'funnel' | 'card';
+    type: 'line' | 'bar' | 'area' | 'pie' | 'radar' | 'scatter' | 'heatmap' | 'donut' | 'stackedBar' | 'horizontalBar' | 'composed' | 'funnel' | 'card' | 'map';
     dataSource: IDataSource;
     style: IChartStyle;
     ownerId: mongoose.Types.ObjectId;
@@ -86,10 +86,10 @@ export interface IChart extends Document {
 
 const FilterSchema = new Schema({
     field: { type: String, required: true },
-    operator: { 
-        type: String, 
+    operator: {
+        type: String,
         enum: ['=', '!=', '>', '<', '>=', '<=', 'like', 'in'],
-        required: true 
+        required: true
     },
     value: { type: Schema.Types.Mixed, required: true },
 }, { _id: false });
@@ -140,6 +140,8 @@ const ChartStyleSchema = new Schema({
     title: { type: String },
     titleFontSize: { type: Number },
     titleColor: { type: String },
+    textColor: { type: String },
+    gridColor: { type: String },
     xAxisLabel: { type: String },
     yAxisLabel: { type: String },
     xAxisExclude: [{ type: String }],
@@ -162,6 +164,16 @@ const ChartStyleSchema = new Schema({
     cardIcon: { type: String },
     showCardIcon: { type: Boolean },
     cardBackgroundColor: { type: String },
+    // StatCard KPI specific
+    showGauge: { type: Boolean },
+    kpiPlanValue: { type: Number },
+    kpiThreshold: { type: Number },
+    showStatusBadge: { type: Boolean },
+    showCornerAccent: { type: Boolean },
+    // DataTileGrid specific
+    tileGridColumns: { type: Number },
+    tileTargetField: { type: String },
+    tileActualField: { type: String },
 }, { _id: false, strict: false }); // Allow additional fields
 
 const ChartSchema = new Schema<IChart>(
@@ -174,7 +186,7 @@ const ChartSchema = new Schema<IChart>(
         },
         type: {
             type: String,
-            enum: ['line', 'bar', 'area', 'pie', 'radar', 'scatter', 'heatmap', 'donut', 'stackedBar', 'horizontalBar', 'composed', 'funnel', 'card'],
+            enum: ['line', 'bar', 'area', 'pie', 'radar', 'scatter', 'heatmap', 'donut', 'stackedBar', 'horizontalBar', 'composed', 'funnel', 'card', 'map', 'statCard', 'dataTileGrid', 'gauge', 'treemap', 'waterfall', 'semicircleGauge', 'networkMap', 'hexagon'],
             required: true,
         },
         dataSource: {

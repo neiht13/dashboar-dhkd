@@ -2,9 +2,11 @@
 
 import React from "react";
 import * as icons from "lucide-react";
+import { CheckCircle, AlertCircle } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { StatCardMetric } from "@/types";
 import { cn } from "@/lib/utils";
+import { AngularGauge, getGaugeColor } from "@/components/charts/AngularGauge";
 
 interface StatCardProps {
     title?: string;
@@ -14,9 +16,16 @@ interface StatCardProps {
     dataSource?: any; // Cấu hình data source
     backgroundColor?: string;
     accentColor?: string;
-    layout?: "list" | "grid"; // New prop: layout mode
+    layout?: "list" | "grid" | "kpi"; // New: kpi layout với gauge
     gridCols?: 1 | 2 | 3 | 4; // New prop: responsive grid cols
     className?: string; // New prop: custom class
+    // KPI Mode props
+    showGauge?: boolean; // Hiển thị AngularGauge
+    gaugeValue?: number; // Giá trị % cho gauge (0-100)
+    planValue?: number | string; // Giá trị kế hoạch (KH)
+    threshold?: number; // Ngưỡng để xác định "đạt" (mặc định 100)
+    showCornerAccent?: boolean; // Hiển thị corner accent decoration
+    showStatusBadge?: boolean; // Hiển thị status badge (Đạt KH / Cần nỗ lực)
 }
 
 export function StatCard({
@@ -30,6 +39,12 @@ export function StatCard({
     layout = "list",
     gridCols = 1,
     className,
+    showGauge = false,
+    gaugeValue,
+    planValue,
+    threshold = 100,
+    showCornerAccent = false,
+    showStatusBadge = false,
 }: StatCardProps) {
     // Tự động tạo metrics từ dữ liệu nếu không được cung cấp
     const metrics = React.useMemo(() => {
@@ -238,6 +253,88 @@ export function StatCard({
             </div>
         );
     };
+
+    // KPI Layout với AngularGauge và status badge (từ example.tsx)
+    if (layout === "kpi") {
+        const displayValue = metrics[0]?.value || 0;
+        const effectiveGaugeValue = gaugeValue ?? (typeof displayValue === 'number' ? displayValue : 0);
+        const isAchieved = effectiveGaugeValue >= threshold;
+        const gaugeColor = isAchieved ? '#10b981' : getGaugeColor(effectiveGaugeValue, threshold);
+
+        return (
+            <div
+                className={cn(
+                    "bg-white border border-slate-200 shadow-sm hover:shadow-md transition-all duration-300 rounded-none relative overflow-hidden",
+                    className
+                )}
+            >
+                {/* Corner accent decoration */}
+                {showCornerAccent && (
+                    <div
+                        className="absolute top-0 right-0 w-0 h-0 border-l-[40px] border-l-transparent border-t-[40px]"
+                        style={{ borderTopColor: accentColor, opacity: 0.1 }}
+                    />
+                )}
+
+                <div className="p-5 flex justify-between items-center h-full">
+                    {/* Left: Content */}
+                    <div className="flex-1 flex flex-col justify-between h-full">
+                        <div>
+                            {/* Header: Icon + Title */}
+                            <div className="flex items-center gap-2 mb-2">
+                                {MainIcon && (
+                                    <div className="p-1.5 rounded-none bg-slate-100 text-slate-600">
+                                        <MainIcon size={16} />
+                                    </div>
+                                )}
+                                <h3 className="text-slate-500 text-[11px] font-bold uppercase tracking-widest">
+                                    {title || metrics[0]?.label}
+                                </h3>
+                            </div>
+
+                            {/* Value */}
+                            <div className="mt-1">
+                                <span className="text-3xl font-black text-slate-800 tracking-tight block">
+                                    {formatValue(displayValue)}
+                                </span>
+                                {planValue && (
+                                    <span className="text-xs font-bold text-slate-400 block mt-1">
+                                        KH: {typeof planValue === 'number' ? planValue.toLocaleString() : planValue}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Status Badge */}
+                        {showStatusBadge && (
+                            <div className="mt-4 flex items-center gap-1 text-[10px] font-bold">
+                                {isAchieved ? (
+                                    <span className="text-emerald-600 flex items-center gap-1 bg-emerald-50 px-2 py-0.5">
+                                        <CheckCircle size={10} /> Đạt KH
+                                    </span>
+                                ) : (
+                                    <span className="text-amber-600 flex items-center gap-1 bg-amber-50 px-2 py-0.5">
+                                        <AlertCircle size={10} /> Cần nỗ lực
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Right: AngularGauge */}
+                    {showGauge && (
+                        <div className="ml-2 pt-2">
+                            <AngularGauge
+                                value={effectiveGaugeValue}
+                                color={gaugeColor}
+                                size={130}
+                            />
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    }
 
     if (layout === "grid" || (metrics.length > 1 && !title)) {
         return (

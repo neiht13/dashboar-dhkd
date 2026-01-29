@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Plus, Database, Trash2, Edit, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
+import { StoredProcedureManager } from '@/components/settings/StoredProcedureManager';
 
 interface DatabaseConnection {
     _id: string;
@@ -408,6 +409,11 @@ export default function DatabaseSettingsPage() {
                     ))}
                 </div>
             )}
+
+            {/* Stored Procedures Section */}
+            <div className="mt-12 border-t pt-8">
+                <StoredProcedureManager />
+            </div>
         </div>
     );
 }

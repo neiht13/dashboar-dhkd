@@ -21,7 +21,16 @@ export async function GET(
         if (ObjectId.isValid(id) && id.length === 24) {
             dashboard = await db.collection('dashboards').findOne({ _id: new ObjectId(id) });
         } else {
+            // Try by id field
             dashboard = await db.collection('dashboards').findOne({ id: id });
+            // If not found, try by _id as string
+            if (!dashboard && ObjectId.isValid(id)) {
+                try {
+                    dashboard = await db.collection('dashboards').findOne({ _id: new ObjectId(id) });
+                } catch {
+                    // Ignore error
+                }
+            }
         }
 
         if (!dashboard) {
@@ -40,17 +49,64 @@ export async function GET(
         }
 
         // 2. Check Share Token (if not already accessible)
-        if (!hasAccess && shareToken) {
+        // If no token provided, try to find active share link for this dashboard
+        if (!hasAccess) {
             const ShareLink = (await import('@/models/ShareLink')).default;
-            const { verifyShareToken } = await import('@/lib/jwt');
+            
+            // Get dashboard ID for comparison - normalize to ObjectId
+            let dashboardObjectId: ObjectId | null = null;
+            if (dashboard._id) {
+                dashboardObjectId = dashboard._id instanceof ObjectId ? dashboard._id : new ObjectId(dashboard._id.toString());
+            } else if (dashboard.id && ObjectId.isValid(dashboard.id)) {
+                dashboardObjectId = new ObjectId(dashboard.id);
+            }
 
-            const shareLink = await ShareLink.findOne({
-                token: shareToken,
-                dashboardId: dashboard._id,
-                isActive: true
-            });
+            let shareLink = null;
+
+            if (shareToken) {
+                // Find by token and dashboardId
+                if (dashboardObjectId) {
+                    shareLink = await ShareLink.findOne({
+                        token: shareToken,
+                        dashboardId: dashboardObjectId,
+                        isActive: true
+                    });
+                }
+                
+                // If not found, try finding by token only and verify dashboardId matches
+                if (!shareLink) {
+                    const foundByToken = await ShareLink.findOne({
+                        token: shareToken,
+                        isActive: true
+                    });
+                    
+                    if (foundByToken) {
+                        // Verify dashboard matches
+                        const shareLinkDashboardId = foundByToken.dashboardId.toString();
+                        const dashboardIdStr = dashboardObjectId ? dashboardObjectId.toString() : (dashboard.id || '');
+                        
+                        if (dashboardObjectId && foundByToken.dashboardId.equals(dashboardObjectId)) {
+                            shareLink = foundByToken;
+                        } else if (shareLinkDashboardId === dashboardIdStr) {
+                            shareLink = foundByToken;
+                        } else if (dashboard.id && ObjectId.isValid(dashboard.id) && foundByToken.dashboardId.equals(new ObjectId(dashboard.id))) {
+                            shareLink = foundByToken;
+                        }
+                    }
+                }
+            } else {
+                // No token provided - try to find any active share link for this dashboard
+                if (dashboardObjectId) {
+                    shareLink = await ShareLink.findOne({
+                        dashboardId: dashboardObjectId,
+                        isActive: true,
+                        type: 'public' // Only public links can be accessed without explicit token
+                    });
+                }
+            }
 
             if (shareLink) {
+                const { verifyShareToken } = await import('@/lib/jwt');
                 // Check expiration
                 if (shareLink.expiresAt && new Date() > shareLink.expiresAt) {
                     return NextResponse.json({ success: false, error: 'Share link expired' }, { status: 403 });

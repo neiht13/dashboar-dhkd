@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, use, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, LayoutDashboard, Maximize2, Minimize2, RefreshCw, Calendar as CalendarIcon, X } from "lucide-react";
+import { ArrowLeft, LayoutDashboard, Maximize2, Minimize2, RefreshCw, Calendar as CalendarIcon, X, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -79,14 +79,10 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
     const isMobile = useIsMobile();
     const isTablet = useIsTablet();
 
-    // Dynamic cell height based on container width for responsive scaling
-    const getCellHeight = () => {
-        if (isMobile) return 50;
-        if (containerWidth < 600) return 50;
-        if (containerWidth < 900) return 55;
-        return 60;
-    };
-    const CELL_HEIGHT = getCellHeight();
+    // Dynamic cell height - match DashboardGrid exactly
+    const CELL_HEIGHT = 60;
+    const CELL_HEIGHT_MOBILE = 50;
+    const cellHeight = isMobile ? CELL_HEIGHT_MOBILE : CELL_HEIGHT;
     const gridCols = isMobile ? GRID_COLS_MOBILE : GRID_COLS;
     const gap = isMobile ? GAP_MOBILE : GAP;
 
@@ -134,6 +130,18 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                         setActiveTabId(loadedDashboard.activeTabId);
                     }
                 } else {
+                    // Handle different error status codes
+                    if (response.status === 403) {
+                        window.location.href = '/forbidden';
+                        return;
+                    } else if (response.status === 401) {
+                        window.location.href = '/unauthorized';
+                        return;
+                    } else if (response.status === 404) {
+                        window.location.href = '/not-found';
+                        return;
+                    }
+                    
                     const stored = localStorage.getItem('dashboard-storage');
                     if (stored) {
                         const parsed = JSON.parse(stored);
@@ -149,10 +157,10 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                                 setActiveTabId(found.activeTabId);
                             }
                         } else {
-                            setError("Dashboard không tồn tại");
+                            setError(result.error || "Dashboard không tồn tại");
                         }
                     } else {
-                        setError("Dashboard không tồn tại");
+                        setError(result.error || "Dashboard không tồn tại");
                     }
                 }
             } catch (err) {
@@ -279,6 +287,7 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                     const groupByFields = config.dataSource.groupBy;
                     const groupByArr = Array.isArray(groupByFields) ? groupByFields : groupByFields ? [groupByFields] : [];
                     const aggregation = config.dataSource.aggregation || "sum";
+                    const queryMode = config.dataSource.queryMode;
 
                     // Nếu là custom SQL: group lại theo giao diện (Cột X + groupBy) để đảm bảo giống thiết kế
                     if (queryMode === 'custom' && xAxis && config.dataSource.yAxis?.length) {
@@ -706,10 +715,10 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
     }, [dateRange]);
 
     const renderWidgetContent = (widget: Widget) => {
-        // Responsive height calculation
+        // Responsive height calculation - match DashboardGrid exactly
         const widgetHeight = isMobile 
-            ? ((widget.layout?.h || 3) * CELL_HEIGHT) - 30
-            : ((widget.layout?.h || 3) * CELL_HEIGHT) - 20;
+            ? ((widget.layout?.h || 3) * cellHeight) - 20
+            : ((widget.layout?.h || 3) * cellHeight) - 60;
         const height = Math.max(200, widgetHeight); // Minimum height for charts
 
         switch (widget.type) {
@@ -749,34 +758,27 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                 const isTypeChanged = overrideType && overrideType !== baseChartConfig.type;
 
                 return (
-                    <div className={cn(
-                        "w-full h-full flex flex-col overflow-hidden",
-                        isMobile && "p-1" // Add padding on mobile
-                    )}>
-                        {/* Chart Type Selector - Responsive */}
-                        <div className={cn(
-                            "flex items-center justify-between border-b bg-slate-50/80",
-                            isMobile ? "px-2 py-2" : "px-3 py-1.5"
-                        )}>
-                            <span className={cn(
-                                "font-medium text-slate-600 truncate",
-                                isMobile ? "text-sm max-w-[140px]" : "text-xs max-w-[150px]"
-                            )}>
-                                {chartConfig.name || 'Chart'}
-                            </span>
-                            <div className={cn(
-                                "flex items-center gap-1",
-                                isMobile && "gap-2"
-                            )}>
+                    <div className="w-full h-full flex flex-col relative p-4 md:p-6">
+                        {/* Chart Title - Natural display at top */}
+                        {chartConfig.name && (
+                            <div className="mb-4 md:mb-5 pr-20">
+                                <h3 className="text-lg md:text-xl font-semibold text-[#0F172A] leading-tight">
+                                    {chartConfig.name}
+                                </h3>
+                            </div>
+                        )}
+                        
+                        {/* Floating Chart Type Selector - Small, compact, top right */}
+                        <div className="absolute top-4 right-4 z-10 flex items-center gap-1.5">
+                            <div className="flex items-center gap-1 bg-white/95 backdrop-blur-sm border border-slate-200/80 shadow-md rounded-lg px-1.5 py-1">
                                 <Select
                                     value={currentChartType}
                                     onValueChange={handleChartTypeChange}
                                 >
-                                    <SelectTrigger className={cn(
-                                        "bg-white",
-                                        isMobile ? "h-8 text-xs w-[110px]" : "h-6 text-[10px] w-[80px]"
-                                    )}>
-                                        <SelectValue />
+                                    <SelectTrigger className="h-6 w-auto min-w-[60px] px-2 py-0.5 border-0 bg-transparent shadow-none hover:bg-slate-50 text-[10px] font-medium">
+                                        <SelectValue>
+                                            {CHART_TYPES.find(ct => ct.value === currentChartType)?.label || 'Cột'}
+                                        </SelectValue>
                                     </SelectTrigger>
                                     <SelectContent>
                                         {CHART_TYPES.map(ct => (
@@ -790,49 +792,47 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                                     <Button
                                         variant="ghost"
                                         size="sm"
-                                        className={cn(
-                                            "p-0 text-orange-500 hover:text-orange-600",
-                                            isMobile ? "h-8 w-8" : "h-6 w-6"
-                                        )}
+                                        className="h-6 w-6 p-0 text-orange-500 hover:text-orange-600 hover:bg-orange-50"
                                         onClick={() => handleChartTypeChange('reset')}
-                                        title="Khôi phục"
+                                        title="Khôi phục kiểu gốc"
                                     >
-                                        <X className={isMobile ? "h-4 w-4" : "h-3 w-3"} />
+                                        <X className="h-3 w-3" />
                                     </Button>
                                 )}
                             </div>
                         </div>
-                        <div className={cn(
-                            "flex-1 min-h-0 overflow-hidden",
-                            isMobile ? "p-1" : "p-2"
-                        )}>
+
+                        {/* Chart Container - Full width with negative margins to extend to card edges */}
+                        <div className="flex-1 min-h-0 -mx-4 md:-mx-6 -mb-4 md:-mb-6 mt-auto">
                             {chartData.length > 0 ? (
                                 <div className={cn(
                                     "w-full h-full",
                                     isMobile && "overflow-x-auto" // Allow horizontal scroll for wide charts
                                 )}>
                                     <InteractiveChart
+                                        key={`${widget.id}-${containerWidth}`}
                                         config={chartConfig}
                                         data={chartData}
                                         chartId={widget.id}
                                         width="100%"
-                                        height={Math.max(isMobile ? 250 : 80, height - (isMobile ? 50 : 32))}
+                                        height={Math.max(
+                                            isMobile ? 250 : 200, 
+                                            height - (chartConfig.name ? (isMobile ? 90 : 120) : (isMobile ? 50 : 70))
+                                        )}
                                         onDrillDown={handleChartDrillDown}
                                         enableCrossFilter={false}
                                         crossFilterField={xAxisField}
                                     />
                                 </div>
                             ) : (
-                                <div className={cn(
-                                    "w-full h-full",
-                                    isMobile && "overflow-x-auto"
-                                )}>
-                                    <DynamicChart
-                                        config={chartConfig}
-                                        data={[]}
-                                        width="100%"
-                                        height={Math.max(isMobile ? 250 : 80, height - (isMobile ? 50 : 32))}
-                                    />
+                                <div className="w-full h-full flex items-center justify-center min-h-[200px]">
+                                    <div className="text-center text-[#94A3B8]">
+                                        <BarChart3 className={cn(
+                                            "mx-auto mb-2 opacity-50",
+                                            isMobile ? "h-10 w-10" : "h-8 w-8"
+                                        )} />
+                                        <p className={isMobile ? "text-sm" : "text-xs"}>Đang tải...</p>
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -864,7 +864,7 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
         }
     };
 
-    const getWidgetStyle = (layout: LayoutItem | undefined, containerWidth: number, widgetIndex: number) => {
+    const getWidgetStyle = (layout: LayoutItem | undefined) => {
         const x = layout?.x || 0;
         const y = layout?.y || 0;
         const w = layout?.w || 4;
@@ -872,16 +872,13 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
 
         // On mobile: stack widgets vertically, full width
         if (isMobile) {
-            // Calculate vertical stacking position
+            // Calculate vertical stacking position - match DashboardGrid exactly
+            const widgetIndex = validWidgets.findIndex(w => w.layout?.i === layout?.i);
             let stackedY = 0;
-            const displayWidgets = activeTabId
-                ? dashboard?.tabs?.find(t => t.id === activeTabId)?.widgets || []
-                : dashboard?.widgets || [];
-            
             for (let i = 0; i < widgetIndex; i++) {
-                const prevWidget = displayWidgets[i];
-                const prevH = prevWidget?.layout?.h || 3;
-                stackedY += prevH * CELL_HEIGHT + gap;
+                const prevWidget = validWidgets[i];
+                const prevH = prevWidget.layout?.h || 3;
+                stackedY += prevH * cellHeight + gap;
             }
 
             return {
@@ -889,7 +886,7 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                 left: 0,
                 top: stackedY,
                 width: "100%",
-                height: h * CELL_HEIGHT + (h - 1) * gap,
+                height: h * cellHeight + (h - 1) * gap,
             };
         }
 
@@ -899,9 +896,9 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
         return {
             position: "absolute" as const,
             left: x * (cellWidth + gap),
-            top: y * (CELL_HEIGHT + gap),
+            top: y * (cellHeight + gap),
             width: w * cellWidth + (w - 1) * gap,
-            height: h * CELL_HEIGHT + (h - 1) * gap,
+            height: h * cellHeight + (h - 1) * gap,
         };
     };
 
@@ -932,14 +929,22 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
         );
     }
 
+    // Calculate grid height - match DashboardGrid exactly
     let maxRow = 8;
     const validWidgets = displayWidgets.filter(w => w && w.id);
     validWidgets.forEach(widget => {
         const y = widget.layout?.y ?? 0;
         const h = widget.layout?.h ?? 3;
-        maxRow = Math.max(maxRow, y + h + 1);
+        maxRow = Math.max(maxRow, y + h + 2);
     });
-    const gridHeight = maxRow * CELL_HEIGHT + (maxRow - 1) * GAP;
+    
+    // Grid height calculation - match DashboardGrid exactly
+    const gridHeight = isMobile
+        ? validWidgets.reduce((total, widget) => {
+            const h = widget.layout?.h || 3;
+            return total + (h * cellHeight + gap);
+        }, 0)
+        : maxRow * cellHeight + (maxRow - 1) * gap;
 
     return (
         <div className={cn(
@@ -1071,40 +1076,37 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                 >
                     <div
                         className={cn(
-                            "relative transition-all duration-300 ease-in-out w-full bg-white rounded-xl shadow-sm",
-                            isMobile ? "p-2" : "p-4",
-                            isMobile && "overflow-x-hidden" // Prevent horizontal scroll
+                            "rounded-lg transition-all relative",
+                            isMobile && "overflow-x-hidden" // Prevent horizontal scroll on mobile
                         )}
+                        style={{ 
+                            minHeight: Math.max(500, gridHeight + 100),
+                            width: "100%",
+                            maxWidth: "100%",
+                        }}
                     >
                         {validWidgets.length === 0 ? (
-                            <div className="flex items-center justify-center h-[400px] border-2 border-dashed border-[#E2E8F0] rounded-xl">
-                                <p className="text-[#94A3B8]">Tab này chưa có widget nào</p>
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <div className="text-center bg-white/90 p-8 rounded-xl border-2 border-dashed border-[#0052CC]/30 shadow-sm">
+                                    <LayoutDashboard className="h-12 w-12 text-[#0052CC]/30 mx-auto mb-3" />
+                                    <p className="text-[#475569] font-medium mb-1">Không có widget nào</p>
+                                    <p className="text-sm text-[#94A3B8]">Dashboard này chưa có widget</p>
+                                </div>
                             </div>
                         ) : (
                             <div
-                                className={cn(
-                                    "relative",
-                                    isMobile && "overflow-x-hidden" // Prevent horizontal scroll
-                                )}
-                                style={{ 
-                                    height: gridHeight,
-                                    width: "100%",
-                                    maxWidth: "100%",
-                                }}
+                                className="relative"
+                                style={{ height: gridHeight }}
                             >
-                                {validWidgets.map((widget, index) => (
+                                {validWidgets.map((widget) => (
                                     <Card
                                         key={widget.id}
                                         className={cn(
-                                            "overflow-hidden bg-white shadow-md border-[#E2E8F0] hover:shadow-lg transition-shadow",
-                                            isMobile && "rounded-lg mx-2" // Add margin on mobile
+                                            "overflow-hidden bg-white shadow-md hover:shadow-lg transition-all border-[#E2E8F0] group"
                                         )}
-                                        style={getWidgetStyle(widget.layout, containerWidth, index)}
+                                        style={getWidgetStyle(widget.layout)}
                                     >
-                                        <CardContent className={cn(
-                                            "p-0 h-full",
-                                            isMobile && "overflow-x-auto" // Allow horizontal scroll if needed
-                                        )}>
+                                        <CardContent className="p-0 h-full">
                                             {renderWidgetContent(widget)}
                                         </CardContent>
                                     </Card>

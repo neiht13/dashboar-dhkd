@@ -107,8 +107,8 @@ const FilterPanel = ({
                                 className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                             />
                             <span className="text-sm font-medium text-slate-700 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-1.5">
-                                <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-gradient-to-br from-blue-500 to-purple-500 text-white text-[10px] font-bold">
-                                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                                <span className="inline-flex items-center justify-center w-5 h-5 bg-blue-700 text-white text-[10px] font-bold">
+                                all
                                 </span>
                                 Tất cả
                             </span>
@@ -116,18 +116,8 @@ const FilterPanel = ({
 
                         {/* Individual Layer Options - Y-axis columns */}
                         {yAxisOptions.map((option, index) => {
-                            // Generate unique colors for each data layer
-                            const layerColors = [
-                                'bg-blue-500',
-                                'bg-green-500',
-                                'bg-orange-500',
-                                'bg-red-500',
-                                'bg-purple-500',
-                                'bg-pink-500',
-                                'bg-yellow-500',
-                                'bg-cyan-500',
-                            ];
-                            const bgColor = layerColors[index % layerColors.length];
+                           
+                            const bgColor = 'bg-blue-500';
                             const iconLetter = option.label.charAt(0).toUpperCase();
 
                             return (
@@ -141,7 +131,7 @@ const FilterPanel = ({
                                         className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                                     />
                                     <span className="text-sm text-slate-600 dark:text-slate-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-1.5">
-                                        <span className={`inline-flex items-center justify-center w-5 h-5 rounded ${bgColor} text-white text-[10px] font-bold`}>
+                                        <span className={`inline-flex items-center justify-center w-5 h-5  ${bgColor} text-white text-[10px] font-bold`}>
                                             {iconLetter}
                                         </span>
                                         {option.label}

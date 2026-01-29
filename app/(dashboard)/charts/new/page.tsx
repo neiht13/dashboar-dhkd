@@ -31,6 +31,12 @@ import {
     X,
     Table2,
     Gauge,
+    TreePine,
+    GitFork,
+    Signal,
+    Wifi,
+    Grid,
+    Target,
 } from "lucide-react";
 // Dynamic import for xlsx - loaded only when needed
 let XLSX: typeof import('xlsx') | null = null;
@@ -77,20 +83,32 @@ interface ColumnInfo {
     isPrimaryKey: number;
 }
 
-const chartTypes: { type: ChartType; label: string; icon: React.ReactNode }[] = [
-    { type: "bar", label: "Cột", icon: <BarChart3 className="h-5 w-5" /> },
-    { type: "stackedBar", label: "Cột chồng", icon: <Layers className="h-5 w-5" /> },
-    { type: "horizontalBar", label: "Cột ngang", icon: <ArrowRightLeft className="h-5 w-5" /> },
-    { type: "line", label: "Đường", icon: <LineChart className="h-5 w-5" /> },
-    { type: "area", label: "Vùng", icon: <Activity className="h-5 w-5" /> },
-    { type: "pie", label: "Tròn", icon: <PieChart className="h-5 w-5" /> },
+const chartTypes: { type: ChartType; label: string; icon: React.ReactNode; category?: string }[] = [
+    // Basic charts
+    { type: "bar", label: "Cột", icon: <BarChart3 className="h-5 w-5" />, category: "basic" },
+    { type: "stackedBar", label: "Cột chồng", icon: <Layers className="h-5 w-5" />, category: "basic" },
+    { type: "horizontalBar", label: "Cột ngang", icon: <ArrowRightLeft className="h-5 w-5" />, category: "basic" },
+    { type: "line", label: "Đường", icon: <LineChart className="h-5 w-5" />, category: "basic" },
+    { type: "area", label: "Vùng", icon: <Activity className="h-5 w-5" />, category: "basic" },
+    { type: "pie", label: "Tròn", icon: <PieChart className="h-5 w-5" />, category: "basic" },
 
-    { type: "radar", label: "Radar", icon: <Radar className="h-5 w-5" /> },
-    { type: "composed", label: "Kết hợp", icon: <GitMerge className="h-5 w-5" /> },
-    { type: "funnel", label: "Phễu", icon: <Filter className="h-5 w-5" /> },
-    { type: "map", label: "Bản đồ", icon: <Map className="h-5 w-5" /> },
-    { type: "gauge", label: "Tốc độ (Gauge)", icon: <Gauge className="h-5 w-5" /> },
-    { type: "card", label: "Thẻ thống kê", icon: <BarChart2 className="h-5 w-5" /> },
+    // Advanced charts
+    { type: "radar", label: "Radar", icon: <Radar className="h-5 w-5" />, category: "advanced" },
+    { type: "composed", label: "Kết hợp", icon: <GitMerge className="h-5 w-5" />, category: "advanced" },
+    { type: "funnel", label: "Phễu", icon: <Filter className="h-5 w-5" />, category: "advanced" },
+    { type: "treemap", label: "Treemap", icon: <TreePine className="h-5 w-5" />, category: "advanced" },
+    { type: "waterfall", label: "Waterfall", icon: <GitFork className="h-5 w-5" />, category: "advanced" },
+
+    // Gauges & KPIs
+    { type: "gauge", label: "Gauge", icon: <Gauge className="h-5 w-5" />, category: "kpi" },
+    { type: "semicircleGauge", label: "Semi Gauge", icon: <Signal className="h-5 w-5" />, category: "kpi" },
+    { type: "card", label: "Thẻ thống kê", icon: <BarChart2 className="h-5 w-5" />, category: "kpi" },
+    { type: "statCard", label: "KPI Card", icon: <Target className="h-5 w-5" />, category: "kpi" },
+    { type: "dataTileGrid", label: "Tile Grid", icon: <Grid className="h-5 w-5" />, category: "kpi" },
+
+    // Maps
+    { type: "map", label: "Bản đồ", icon: <Map className="h-5 w-5" />, category: "map" },
+    { type: "networkMap", label: "Network Map", icon: <Wifi className="h-5 w-5" />, category: "map" },
 ];
 
 
@@ -230,7 +248,7 @@ function ChartBuilderContent() {
                         setOrderDirection(existingChart.dataSource.orderDirection || 'asc');
                         setLimit(existingChart.dataSource.limit || 0);
 
-                        // Restore Query Mode (simple, custom, or import)
+                        // Restore Query Mode (simple, custom, import, or storedProcedure)
                         if (existingChart.dataSource.queryMode === 'custom') {
                             setQueryMode('custom');
                             setCustomSql(existingChart.dataSource.customQuery || '');
@@ -247,6 +265,7 @@ function ChartBuilderContent() {
                                 setImportedColumns(Object.keys(existingChart.dataSource.importedData[0]));
                                 setChartData(existingChart.dataSource.importedData);
                             }
+
                         } else {
                             setQueryMode('simple');
                         }
@@ -312,6 +331,22 @@ function ChartBuilderContent() {
                         if (existingChart.style.showCardIcon !== undefined) setShowCardIcon(existingChart.style.showCardIcon);
                         if (existingChart.dataSource?.metrics) setStatCardMetrics(existingChart.dataSource.metrics as StatCardMetric[]);
                         if (existingChart.style.cardBackgroundColor) setCardBackgroundColor(existingChart.style.cardBackgroundColor);
+
+                        // StatCard KPI restoration
+                        if (existingChart.style.showGauge !== undefined) setShowGauge(existingChart.style.showGauge);
+                        if (existingChart.style.kpiPlanValue !== undefined) setKpiPlanValue(existingChart.style.kpiPlanValue);
+                        if (existingChart.style.kpiThreshold !== undefined) setKpiThreshold(existingChart.style.kpiThreshold);
+                        if (existingChart.style.showStatusBadge !== undefined) setShowStatusBadge(existingChart.style.showStatusBadge);
+                        if (existingChart.style.showCornerAccent !== undefined) setShowCornerAccent(existingChart.style.showCornerAccent);
+
+                        // DataTileGrid restoration
+                        if (existingChart.style.tileGridColumns !== undefined) setTileGridColumns(existingChart.style.tileGridColumns as any);
+                        if (existingChart.style.tileTargetField !== undefined) setTileTargetField(existingChart.style.tileTargetField);
+                        if (existingChart.style.tileActualField !== undefined) setTileActualField(existingChart.style.tileActualField);
+
+                        // General style restoration
+                        if (existingChart.style.textColor) setTextColor(existingChart.style.textColor);
+                        if (existingChart.style.gridColor) setGridColor(existingChart.style.gridColor);
                     }
                 }
             }
@@ -338,16 +373,19 @@ function ChartBuilderContent() {
         const getXAxis = () => {
             if (queryMode === 'custom') return customSqlXAxis;
             if (queryMode === 'import') return importXAxis;
+
             return selectedXAxis;
         };
         const getYAxis = () => {
             if (queryMode === 'custom') return customSqlYAxis;
             if (queryMode === 'import') return importYAxis;
+
             return selectedYAxis;
         };
         const getTable = () => {
             if (queryMode === 'custom') return selectedTable || 'custom_query';
             if (queryMode === 'import') return 'imported_data';
+
             return selectedTable;
         };
 
@@ -376,6 +414,8 @@ function ChartBuilderContent() {
                 // Import-specific data
                 importedData: queryMode === 'import' ? importedData : undefined,
                 importedFileName: queryMode === 'import' ? importedFileName : undefined,
+                // Stored Procedure-specific data
+
                 // StatCard metrics
                 metrics: currentChart.type === 'statCard' ? statCardMetrics : undefined,
                 filters: [
@@ -422,6 +462,22 @@ function ChartBuilderContent() {
                 // Map specific
                 mapDisplayMode: currentChart.type === 'map' ? mapDisplayMode : undefined,
                 mapColorScheme: currentChart.type === 'map' ? mapColorScheme : undefined,
+
+                // StatCard KPI specific
+                showGauge: currentChart.type === 'statCard' ? showGauge : undefined,
+                kpiPlanValue: currentChart.type === 'statCard' ? kpiPlanValue : undefined,
+                kpiThreshold: currentChart.type === 'statCard' ? kpiThreshold : undefined,
+                showStatusBadge: currentChart.type === 'statCard' ? showStatusBadge : undefined,
+                showCornerAccent: currentChart.type === 'statCard' ? showCornerAccent : undefined,
+
+                // DataTileGrid specific
+                tileGridColumns: currentChart.type === 'dataTileGrid' ? tileGridColumns : undefined,
+                tileTargetField: currentChart.type === 'dataTileGrid' ? tileTargetField : undefined,
+                tileActualField: currentChart.type === 'dataTileGrid' ? tileActualField : undefined,
+
+                // General Styling
+                textColor: textColor || undefined,
+                gridColor: gridColor || undefined,
             },
             createdAt: new Date(),
             updatedAt: new Date(),
@@ -506,12 +562,13 @@ function ChartBuilderContent() {
     const [isLoadingChartData, setIsLoadingChartData] = useState(false);
     const [chartDataError, setChartDataError] = useState<string | null>(null);
 
-    // Query Mode (simple, custom SQL, or import)
+    // Query Mode (simple, custom SQL, import, or storedProcedure)
     const [queryMode, setQueryMode] = useState<"simple" | "custom" | "import">("simple");
     const [customSql, setCustomSql] = useState<string>("");
     const [customSqlXAxis, setCustomSqlXAxis] = useState<string>("");
     const [customSqlYAxis, setCustomSqlYAxis] = useState<string[]>([]);
     const [customSqlColumns, setCustomSqlColumns] = useState<string[]>([]);
+
 
     // Import Mode
     const [importedData, setImportedData] = useState<Record<string, unknown>[]>([]);
@@ -538,7 +595,7 @@ function ChartBuilderContent() {
     const [yAxisFieldLabels, setYAxisFieldLabels] = useState<Record<string, string>>({}); // Custom labels for Y-axis fields
     const [yAxisFieldColors, setYAxisFieldColors] = useState<Record<string, string>>({}); // Custom colors for Y-axis fields
     const [titleFontSize, setTitleFontSize] = useState(14);
-    const [pieVariant, setPieVariant] = useState<"default" | "sized" | "donut" | "gauge">("default");
+    const [pieVariant, setPieVariant] = useState<"default" | "sized" | "donut" | "gauge" | "semicircle">("default");
 
     // Card styling state
     const [cardFontSize, setCardFontSize] = useState<"sm" | "md" | "lg" | "xl">("lg");
@@ -546,9 +603,25 @@ function ChartBuilderContent() {
     const [cardIcon, setCardIcon] = useState<string>("");
     const [showCardIcon, setShowCardIcon] = useState(true);
     const [statCardMetrics, setStatCardMetrics] = useState<StatCardMetric[]>([]);
-    const [mapDisplayMode, setMapDisplayMode] = useState<string>("choropleth");
-    const [mapColorScheme, setMapColorScheme] = useState<string>("default");
+    const [mapDisplayMode, setMapDisplayMode] = useState<"heatmap" | "category" | "value" | "coverage">("value");
+    const [mapColorScheme, setMapColorScheme] = useState<"default" | "blues" | "greens" | "reds" | "purples" | "signal">("default");
     const [cardBackgroundColor, setCardBackgroundColor] = useState<string>("");
+
+    // General Style State
+    const [textColor, setTextColor] = useState<string>("");
+    const [gridColor, setGridColor] = useState<string>("");
+
+    // StatCard KPI specific state (from example.tsx design)
+    const [showGauge, setShowGauge] = useState(true);
+    const [kpiPlanValue, setKpiPlanValue] = useState<number>(0);
+    const [kpiThreshold, setKpiThreshold] = useState<number>(100);
+    const [showStatusBadge, setShowStatusBadge] = useState(true);
+    const [showCornerAccent, setShowCornerAccent] = useState(true);
+
+    // DataTileGrid specific state
+    const [tileGridColumns, setTileGridColumns] = useState<2 | 4 | 6 | 8>(4);
+    const [tileTargetField, setTileTargetField] = useState<string>("");
+    const [tileActualField, setTileActualField] = useState<string>("");
 
     const [activeTab, setActiveTab] = useState<"data" | "style">("data");
 
@@ -753,6 +826,7 @@ function ChartBuilderContent() {
 
     const handleXAxisChange = (xAxis: string) => {
         setSelectedXAxis(xAxis);
+        setXAxisLabel(xAxis);
         // Default orderBy to xAxis
         if (!orderBy) setOrderBy(xAxis);
         updateDataSource({ xAxis });
@@ -765,6 +839,7 @@ function ChartBuilderContent() {
             ? selectedYAxis.filter((f) => f !== field)
             : [...selectedYAxis, field];
         setSelectedYAxis(newYAxis);
+        setYAxisLabel(newYAxis.join(', '));
         updateDataSource({ yAxis: newYAxis });
     };
 
@@ -1028,11 +1103,13 @@ function ChartBuilderContent() {
     const getPreviewXAxis = () => {
         if (queryMode === 'custom') return customSqlXAxis;
         if (queryMode === 'import') return importXAxis;
+
         return selectedXAxis || "thang";
     };
     const getPreviewYAxis = () => {
         if (queryMode === 'custom') return customSqlYAxis;
         if (queryMode === 'import') return importYAxis;
+
         return selectedYAxis.length > 0 ? selectedYAxis : ["ptm"];
     };
 
@@ -1057,6 +1134,7 @@ function ChartBuilderContent() {
             endDateColumn: endDateColumn || undefined,
             importedData: queryMode === 'import' ? importedData : undefined,
             importedFileName: queryMode === 'import' ? importedFileName : undefined,
+
         },
         style: {
             colors: defaultChartColors,
@@ -1103,12 +1181,12 @@ function ChartBuilderContent() {
                             variant="outline"
                             size="sm"
                             onClick={() => router.push("/charts")}
-                            className="gap-2"
+                            className="gap-2 rounded-none font-bold"
                         >
                             <ArrowLeft className="h-4 w-4" />
                             Quay lại
                         </Button>
-                        <Button size="sm" onClick={handleSaveChart} className="gap-2">
+                        <Button size="sm" onClick={handleSaveChart} className="gap-2 rounded-none font-bold">
                             <Save className="h-4 w-4" />
                             Lưu biểu đồ
                         </Button>
@@ -1119,15 +1197,15 @@ function ChartBuilderContent() {
             <div className="flex-1 flex overflow-hidden">
                 {/* Left Panel - Configuration */}
                 <div className="w-125 flex-shrink-0 bg-white border-r border-[#E2E8F0] overflow-y-auto">
-                    {/* Tabs */}
-                    <div className="flex border-b border-[#E2E8F0]">
+                    {/* Tabs - Angular Style */}
+                    <div className="flex bg-slate-100 p-1">
                         <button
                             onClick={() => setActiveTab("data")}
                             className={cn(
-                                "flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors",
+                                "flex-1 px-4 py-2.5 text-xs font-bold uppercase flex items-center justify-center gap-2 transition-all",
                                 activeTab === "data"
-                                    ? "text-[#0052CC] border-b-2 border-[#0052CC]"
-                                    : "text-[#64748B] hover:text-[#0F172A]"
+                                    ? "bg-white text-blue-700 shadow-sm"
+                                    : "text-slate-500 hover:text-slate-700"
                             )}
                         >
                             <Database className="h-4 w-4" />
@@ -1136,10 +1214,10 @@ function ChartBuilderContent() {
                         <button
                             onClick={() => setActiveTab("style")}
                             className={cn(
-                                "flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors",
+                                "flex-1 px-4 py-2.5 text-xs font-bold uppercase flex items-center justify-center gap-2 transition-all",
                                 activeTab === "style"
-                                    ? "text-[#0052CC] border-b-2 border-[#0052CC]"
-                                    : "text-[#64748B] hover:text-[#0F172A]"
+                                    ? "bg-white text-blue-700 shadow-sm"
+                                    : "text-slate-500 hover:text-slate-700"
                             )}
                         >
                             <Palette className="h-4 w-4" />
@@ -1164,24 +1242,24 @@ function ChartBuilderContent() {
 
                                 {/* Chart Type */}
                                 <div>
-                                    <label className="text-sm font-semibold text-[#0F172A] mb-3 block">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 block">
                                         Loại biểu đồ
                                     </label>
-                                    <div className="grid grid-cols-5 gap-2">
+                                    <div className="grid grid-cols-5 gap-1.5">
                                         {chartTypes.map(({ type, label, icon }) => (
                                             <button
                                                 key={type}
                                                 onClick={() => updateChartType(type)}
                                                 title={label}
                                                 className={cn(
-                                                    "flex flex-col items-center gap-1 p-2 rounded-lg border transition-all",
+                                                    "flex flex-col items-center gap-1 p-2 border-2 transition-all hover:-translate-y-0.5",
                                                     currentChart.type === type
-                                                        ? "border-[#0052CC] bg-[#0052CC]/5 text-[#0052CC]"
-                                                        : "border-[#E2E8F0] hover:border-[#0052CC]/50 text-[#64748B]"
+                                                        ? "border-blue-600 bg-blue-50 text-blue-700"
+                                                        : "border-slate-100 hover:border-blue-300 text-slate-500"
                                                 )}
                                             >
                                                 {icon}
-                                                <span className="text-[10px] font-medium truncate w-full text-center">{label}</span>
+                                                <span className="text-[9px] font-bold uppercase truncate w-full text-center">{label}</span>
                                             </button>
                                         ))}
                                     </div>
@@ -1198,15 +1276,15 @@ function ChartBuilderContent() {
                                         </div>
                                     </div>
 
-                                    {/* Query Mode Toggle */}
-                                    <div className="flex gap-2 mb-4">
+                                    {/* Query Mode Toggle - Angular Style */}
+                                    <div className="flex bg-slate-100 p-1 mb-4">
                                         <button
                                             onClick={() => setQueryMode("simple")}
                                             className={cn(
-                                                "flex-1 py-2 px-3 text-xs font-medium rounded-md border transition-all flex items-center justify-center",
+                                                "flex-1 py-2 px-3 text-xs font-bold transition-all flex items-center justify-center",
                                                 queryMode === "simple"
-                                                    ? "bg-[#0052CC] text-white border-[#0052CC]"
-                                                    : "bg-white text-[#64748B] border-[#E2E8F0] hover:border-[#0052CC]"
+                                                    ? "bg-white text-blue-700 shadow-sm"
+                                                    : "text-slate-500 hover:text-slate-700"
                                             )}
                                         >
                                             <Database className="h-3 w-3 mr-1" /> Đơn giản
@@ -1214,10 +1292,10 @@ function ChartBuilderContent() {
                                         <button
                                             onClick={() => setQueryMode("custom")}
                                             className={cn(
-                                                "flex-1 py-2 px-3 text-xs font-medium rounded-md border transition-all flex items-center justify-center",
+                                                "flex-1 py-2 px-3 text-xs font-bold transition-all flex items-center justify-center",
                                                 queryMode === "custom"
-                                                    ? "bg-[#0052CC] text-white border-[#0052CC]"
-                                                    : "bg-white text-[#64748B] border-[#E2E8F0] hover:border-[#0052CC]"
+                                                    ? "bg-white text-blue-700 shadow-sm"
+                                                    : "text-slate-500 hover:text-slate-700"
                                             )}
                                         >
                                             <Code className="h-3 w-3 mr-1" /> SQL
@@ -1225,10 +1303,10 @@ function ChartBuilderContent() {
                                         <button
                                             onClick={() => setQueryMode("import")}
                                             className={cn(
-                                                "flex-1 py-2 px-3 text-xs font-medium rounded-md border transition-all flex items-center justify-center",
+                                                "flex-1 py-2 px-3 text-xs font-bold transition-all flex items-center justify-center",
                                                 queryMode === "import"
-                                                    ? "bg-[#0052CC] text-white border-[#0052CC]"
-                                                    : "bg-white text-[#64748B] border-[#E2E8F0] hover:border-[#0052CC]"
+                                                    ? "bg-white text-blue-700 shadow-sm"
+                                                    : "text-slate-500 hover:text-slate-700"
                                             )}
                                         >
                                             <Upload className="h-3 w-3 mr-1" /> Import
@@ -1270,7 +1348,7 @@ function ChartBuilderContent() {
                                         {queryMode === "import" && (
                                             <>
                                                 {/* File Upload Area */}
-                                                <div className="border-2 border-dashed border-[#E2E8F0] rounded-lg p-6 text-center hover:border-[#0052CC] transition-colors">
+                                                <div className="border-2 border-dashed border-[#E2E8F0]  p-6 text-center hover:border-[#0052CC] transition-colors">
                                                     <input
                                                         type="file"
                                                         id="file-upload"
@@ -1304,6 +1382,7 @@ function ChartBuilderContent() {
                                                                 // Auto-select first column as X-axis
                                                                 if (cols.length > 0) {
                                                                     setImportXAxis(cols[0]);
+                                                                    setXAxisLabel(cols[0]);
                                                                 }
                                                                 // Auto-select numeric columns as Y-axis
                                                                 const numericCols = cols.filter(col =>
@@ -1311,6 +1390,7 @@ function ChartBuilderContent() {
                                                                 );
                                                                 if (numericCols.length > 0) {
                                                                     setImportYAxis([numericCols[0]]);
+                                                                    setYAxisLabel(numericCols[0]);
                                                                 }
 
                                                                 toast.success(`Đã import ${jsonData.length} dòng từ "${file.name}"`);
@@ -1351,7 +1431,7 @@ function ChartBuilderContent() {
                                                         {/* X-Axis Selection */}
                                                         <div>
                                                             <label className="text-xs text-[#64748B] mb-1 block">Trục X (Labels)</label>
-                                                            <Select value={importXAxis} onValueChange={setImportXAxis}>
+                                                            <Select value={importXAxis} onValueChange={(v) => { setImportXAxis(v); setXAxisLabel(v); }}>
                                                                 <SelectTrigger className="w-full">
                                                                     <SelectValue />
                                                                 </SelectTrigger>
@@ -1373,9 +1453,13 @@ function ChartBuilderContent() {
                                                                             checked={importYAxis.includes(col)}
                                                                             onCheckedChange={(checked) => {
                                                                                 if (checked) {
-                                                                                    setImportYAxis([...importYAxis, col]);
+                                                                                    const newY = [...importYAxis, col];
+                                                                                    setImportYAxis(newY);
+                                                                                    setYAxisLabel(newY.join(', '));
                                                                                 } else {
-                                                                                    setImportYAxis(importYAxis.filter(c => c !== col));
+                                                                                    const newY = importYAxis.filter(c => c !== col);
+                                                                                    setImportYAxis(newY);
+                                                                                    setYAxisLabel(newY.join(', '));
                                                                                 }
                                                                             }}
                                                                         />
@@ -1535,6 +1619,8 @@ function ChartBuilderContent() {
                                             </>
                                         )}
 
+
+
                                         {/* ============ CUSTOM SQL MODE ============ */}
                                         {queryMode === "custom" && (
                                             <>
@@ -1581,11 +1667,16 @@ GROUP BY THANG, NAM, Ma_DV`}
                                                                 toast.success(`Query thành công: ${result.data.length} dòng`);
                                                                 // Auto-detect xAxis and yAxis if not set
                                                                 if (result.columns && result.columns.length > 0) {
-                                                                    if (!customSqlXAxis) setCustomSqlXAxis(result.columns[0]);
+                                                                    if (!customSqlXAxis) {
+                                                                        setCustomSqlXAxis(result.columns[0]);
+                                                                        setXAxisLabel(result.columns[0]);
+                                                                    }
                                                                     if (customSqlYAxis.length === 0 && result.columns.length > 1) {
-                                                                        setCustomSqlYAxis(result.columns.slice(1).filter((c: string) =>
+                                                                        const autoY = result.columns.slice(1).filter((c: string) =>
                                                                             !['THANG', 'NAM', 'thang', 'nam', 'Ma_DV', 'ma_dv', 'loaitb_id'].some(skip => c.toLowerCase().includes(skip.toLowerCase()))
-                                                                        ));
+                                                                        );
+                                                                        setCustomSqlYAxis(autoY);
+                                                                        setYAxisLabel(autoY.join(', '));
                                                                     }
                                                                 }
                                                             } else {
@@ -1616,7 +1707,7 @@ GROUP BY THANG, NAM, Ma_DV`}
                                                             <label className="text-xs text-[#64748B] mb-1 block">Cột X (trục ngang)</label>
                                                             <Select
                                                                 value={customSqlXAxis}
-                                                                onValueChange={(value) => setCustomSqlXAxis(value || "")}
+                                                                onValueChange={(value) => { setCustomSqlXAxis(value || ""); setXAxisLabel(value || ""); }}
                                                             >
                                                                 <SelectTrigger>
                                                                     <SelectValue>{customSqlXAxis || "Chọn cột X"}</SelectValue>
@@ -1638,9 +1729,13 @@ GROUP BY THANG, NAM, Ma_DV`}
                                                                             checked={customSqlYAxis.includes(col)}
                                                                             onCheckedChange={(checked) => {
                                                                                 if (checked) {
-                                                                                    setCustomSqlYAxis([...customSqlYAxis, col]);
+                                                                                    const newY = [...customSqlYAxis, col];
+                                                                                    setCustomSqlYAxis(newY);
+                                                                                    setYAxisLabel(newY.join(', '));
                                                                                 } else {
-                                                                                    setCustomSqlYAxis(customSqlYAxis.filter(c => c !== col));
+                                                                                    const newY = customSqlYAxis.filter(c => c !== col);
+                                                                                    setCustomSqlYAxis(newY);
+                                                                                    setYAxisLabel(newY.join(', '));
                                                                                 }
                                                                             }}
                                                                         />
@@ -2191,6 +2286,15 @@ GROUP BY THANG, NAM, Ma_DV`}
                                             </Select>
                                         </div>
 
+                                        {/* Text Color */}
+                                        <div>
+                                            <label className="text-xs text-[#64748B] mb-1 block">Màu chữ chung</label>
+                                            <div className="flex items-center gap-2">
+                                                <ColorPicker value={textColor || '#1E293B'} onChange={setTextColor} />
+                                                <span className="text-xs text-[#64748B]">{textColor || 'Mặc định'}</span>
+                                            </div>
+                                        </div>
+
                                         {/* Legend Toggle */}
                                         <div className="flex items-center justify-between">
                                             <label className="text-sm text-[#0F172A]">Hiển thị chú thích</label>
@@ -2270,11 +2374,21 @@ GROUP BY THANG, NAM, Ma_DV`}
                                                 <span
                                                     className={cn(
                                                         "absolute top-1 w-4 h-4 rounded-full bg-white transition-transform",
-                                                        showGrid ? "right-1" : "left-1"
                                                     )}
                                                 />
                                             </button>
                                         </div>
+
+                                        {/* Grid Color */}
+                                        {showGrid && (
+                                            <div className="pl-2 border-l-2 border-slate-100">
+                                                <label className="text-xs text-[#64748B] mb-1 block">Màu lưới</label>
+                                                <div className="flex items-center gap-2">
+                                                    <ColorPicker value={gridColor || '#E2E8F0'} onChange={setGridColor} />
+                                                    <span className="text-xs text-[#64748B]">{gridColor || 'Mặc định'}</span>
+                                                </div>
+                                            </div>
+                                        )}
 
                                         {/* Tooltip Theme Toggle */}
                                         <div className="flex items-center justify-between">
@@ -2420,10 +2534,127 @@ GROUP BY THANG, NAM, Ma_DV`}
                                         {/* StatCard Customization */}
                                         {currentChart.type === 'statCard' && (
                                             <div className="space-y-4 pt-2 border-t border-[#E2E8F0] mt-2">
-                                                <MetricsEditor
-                                                    metrics={statCardMetrics}
-                                                    onChange={setStatCardMetrics}
-                                                />
+                                                <label className="text-sm font-semibold text-[#0F172A]">
+                                                    Cấu hình KPI Card
+                                                </label>
+
+                                                <div className="flex items-center justify-between">
+                                                    <label className="text-xs text-[#64748B]">Hiển thị Gauge</label>
+                                                    <Checkbox
+                                                        checked={showGauge}
+                                                        onCheckedChange={(checked) => setShowGauge(checked as boolean)}
+                                                    />
+                                                </div>
+
+                                                <div>
+                                                    <label className="text-xs text-[#64748B] mb-1 block">Giá trị Kế hoạch (KH)</label>
+                                                    <Input
+                                                        type="number"
+                                                        value={kpiPlanValue}
+                                                        onChange={(e) => setKpiPlanValue(Number(e.target.value))}
+                                                        placeholder="VD: 1000"
+                                                        className="h-8 text-sm"
+                                                    />
+                                                    <p className="text-[10px] text-[#94A3B8] mt-1">
+                                                        Dùng để tính % hoàn thành nếu không có cột Target trong data.
+                                                    </p>
+                                                </div>
+
+                                                <div>
+                                                    <label className="text-xs text-[#64748B] mb-1 block">Ngưỡng đạt (%)</label>
+                                                    <Input
+                                                        type="number"
+                                                        value={kpiThreshold}
+                                                        onChange={(e) => setKpiThreshold(Number(e.target.value))}
+                                                        className="h-8 text-sm"
+                                                    />
+                                                </div>
+
+                                                <div className="flex items-center justify-between">
+                                                    <label className="text-xs text-[#64748B]">Hiển thị Status Badge</label>
+                                                    <Checkbox
+                                                        checked={showStatusBadge}
+                                                        onCheckedChange={(checked) => setShowStatusBadge(checked as boolean)}
+                                                    />
+                                                </div>
+
+                                                <div className="flex items-center justify-between">
+                                                    <label className="text-xs text-[#64748B]">Hiển thị Góc trang trí</label>
+                                                    <Checkbox
+                                                        checked={showCornerAccent}
+                                                        onCheckedChange={(checked) => setShowCornerAccent(checked as boolean)}
+                                                    />
+                                                </div>
+
+                                                <div className="pt-2 border-t border-[#E2E8F0]">
+                                                    <label className="text-xs text-[#64748B] mb-1 block font-medium">Metrics (Labels)</label>
+                                                    <MetricsEditor
+                                                        metrics={statCardMetrics}
+                                                        onChange={setStatCardMetrics}
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* DataTileGrid Customization */}
+                                        {currentChart.type === 'dataTileGrid' && (
+                                            <div className="space-y-4 pt-2 border-t border-[#E2E8F0] mt-2">
+                                                <label className="text-sm font-semibold text-[#0F172A]">
+                                                    Cấu hình Tile Grid
+                                                </label>
+
+                                                <div>
+                                                    <label className="text-xs text-[#64748B] mb-1 block">Số cột hiển thị</label>
+                                                    <Select
+                                                        value={tileGridColumns.toString()}
+                                                        onValueChange={(v) => setTileGridColumns(parseInt(v) as any)}
+                                                    >
+                                                        <SelectTrigger className="h-8">
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="2">2 Cột</SelectItem>
+                                                            <SelectItem value="4">4 Cột</SelectItem>
+                                                            <SelectItem value="6">6 Cột</SelectItem>
+                                                            <SelectItem value="8">8 Cột</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+
+                                                <div>
+                                                    <label className="text-xs text-[#64748B] mb-1 block">Cột Target (Kế hoạch)</label>
+                                                    <Select
+                                                        value={tileTargetField}
+                                                        onValueChange={setTileTargetField}
+                                                    >
+                                                        <SelectTrigger className="h-8">
+                                                            <SelectValue placeholder="Chọn cột KH..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="_avg_target">Giá trị trung bình (Mock)</SelectItem>
+                                                            {columns.map(col => (
+                                                                <SelectItem key={col.name} value={col.name}>{col.name}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+
+                                                <div>
+                                                    <label className="text-xs text-[#64748B] mb-1 block">Cột Actual (Thực hiện)</label>
+                                                    <Select
+                                                        value={tileActualField}
+                                                        onValueChange={setTileActualField}
+                                                    >
+                                                        <SelectTrigger className="h-8">
+                                                            <SelectValue placeholder="Chọn cột TH..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {columns.map(col => (
+                                                                <SelectItem key={col.name} value={col.name}>{col.name}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
                                             </div>
                                         )}
 
@@ -2436,7 +2667,7 @@ GROUP BY THANG, NAM, Ma_DV`}
 
                                                 {/* Map Filter Configuration */}
                                                 <div className="space-y-4">
-                                                    <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
+                                                    <div className="bg-blue-50 dark:bg-blue-900/20 p-3  border border-blue-200 dark:border-blue-800">
                                                         <div className="text-xs font-medium text-blue-800 dark:text-blue-200 mb-2">
                                                             Lọc theo dữ liệu đã cấu hình:
                                                         </div>
@@ -2454,17 +2685,17 @@ GROUP BY THANG, NAM, Ma_DV`}
                                                         <div>
                                                             <label className="text-xs text-[#64748B] mb-1 block">Chế độ hiển thị</label>
                                                             <Select
-                                                                value={mapDisplayMode || "choropleth"}
-                                                                value={mapDisplayMode || "choropleth"}
-                                                                onValueChange={(value) => setMapDisplayMode(value as "heatmap" | "category" | "value" | "choropleth" | "bubbles")}
+                                                                value={mapDisplayMode}
+                                                                onValueChange={(value) => setMapDisplayMode(value as "heatmap" | "category" | "value" | "coverage")}
                                                             >
                                                                 <SelectTrigger className="h-8">
                                                                     <SelectValue />
                                                                 </SelectTrigger>
                                                                 <SelectContent>
-                                                                    <SelectItem value="choropleth">Bản đồ màu (Choropleth)</SelectItem>
-                                                                    <SelectItem value="bubbles">Bubbles (Vòng tròn)</SelectItem>
+                                                                    <SelectItem value="value">Theo giá trị</SelectItem>
+                                                                    <SelectItem value="category">Theo danh mục</SelectItem>
                                                                     <SelectItem value="heatmap">Heatmap (Nhiệt độ)</SelectItem>
+                                                                    <SelectItem value="coverage">Vùng phủ</SelectItem>
                                                                 </SelectContent>
                                                             </Select>
                                                         </div>
@@ -2472,9 +2703,8 @@ GROUP BY THANG, NAM, Ma_DV`}
                                                         <div>
                                                             <label className="text-xs text-[#64748B] mb-1 block">Màu sắc chủ đề</label>
                                                             <Select
-                                                                value={mapColorScheme || "default"}
-                                                                value={mapColorScheme || "default"}
-                                                                onValueChange={(value) => setMapColorScheme(value as "default" | "blues" | "greens" | "reds" | "purples")}
+                                                                value={mapColorScheme}
+                                                                onValueChange={(value) => setMapColorScheme(value as "default" | "blues" | "greens" | "reds" | "purples" | "signal")}
                                                             >
                                                                 <SelectTrigger className="h-8">
                                                                     <SelectValue />
@@ -2485,6 +2715,7 @@ GROUP BY THANG, NAM, Ma_DV`}
                                                                     <SelectItem value="greens">Xanh lá</SelectItem>
                                                                     <SelectItem value="reds">Đỏ</SelectItem>
                                                                     <SelectItem value="purples">Tím</SelectItem>
+                                                                    <SelectItem value="signal">Tín hiệu</SelectItem>
                                                                 </SelectContent>
                                                             </Select>
                                                         </div>
@@ -2620,7 +2851,7 @@ GROUP BY THANG, NAM, Ma_DV`}
                                         {defaultChartColors.map((color, index) => (
                                             <div
                                                 key={index}
-                                                className="w-8 h-8 rounded-lg border border-[#E2E8F0]"
+                                                className="w-8 h-8  border border-[#E2E8F0]"
                                                 style={{ backgroundColor: color }}
                                                 title={color}
                                             />
@@ -2674,7 +2905,7 @@ GROUP BY THANG, NAM, Ma_DV`}
                             </div>
 
                             {/* Selected Configuration Summary - pushed to bottom */}
-                            <div className="mt-auto p-4 bg-[#F8FAFC] rounded-lg border border-[#E2E8F0]">
+                            <div className="mt-auto p-4 bg-[#F8FAFC]  border border-[#E2E8F0]">
                                 <h4 className="text-sm font-semibold text-[#0F172A] mb-3">
                                     Cấu hình đã chọn
                                 </h4>
@@ -2684,7 +2915,7 @@ GROUP BY THANG, NAM, Ma_DV`}
                                         <span className="font-medium text-[#0F172A]">
                                             {queryMode === 'import'
                                                 ? (importedFileName || "(chưa upload)")
-                                                : (selectedTable || "(chưa chọn)")}
+                                                : (queryMode === 'custom' ? 'Custom SQL' : (selectedTable || "(chưa chọn)"))}
                                         </span>
                                     </div>
                                     <div>
@@ -2698,7 +2929,7 @@ GROUP BY THANG, NAM, Ma_DV`}
                                         <span className="font-medium text-[#0F172A]">
                                             {queryMode === 'import'
                                                 ? (importXAxis || "(chưa chọn)")
-                                                : (selectedXAxis || "(chưa chọn)")}
+                                                : (queryMode === 'custom' ? (customSqlXAxis || "(chưa chọn)") : (selectedXAxis || "(chưa chọn)"))}
                                         </span>
                                     </div>
                                     <div>
@@ -2706,7 +2937,7 @@ GROUP BY THANG, NAM, Ma_DV`}
                                         <span className="font-medium text-[#0F172A]">
                                             {queryMode === 'import'
                                                 ? (importYAxis.length > 0 ? importYAxis.join(", ") : "(chưa chọn)")
-                                                : (selectedYAxis.length > 0 ? selectedYAxis.join(", ") : "(chưa chọn)")}
+                                                : (queryMode === 'custom' ? (customSqlYAxis.length > 0 ? customSqlYAxis.join(", ") : "(chưa chọn)") : (selectedYAxis.length > 0 ? selectedYAxis.join(", ") : "(chưa chọn)"))}
                                         </span>
                                     </div>
                                 </div>

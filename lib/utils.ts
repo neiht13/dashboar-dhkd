@@ -30,15 +30,15 @@ export function generateId(): string {
 }
 
 export const defaultChartColors = [
-    '#0052CC', // Primary Blue
-    '#B38600', // Primary Ochre
-    '#D10029', // Primary Red
-    '#6A00CC', // Primary Purple
-    '#059669', // Emerald
-    '#0891B2', // Cyan
-    '#D97706', // Amber
-    '#7C3AED', // Violet
-];
+    '#2563EB', // blue tươi
+    '#FF6347', // tomato
+    '#F59E0B', // amber vàng
+    '#10B981', // emerald xanh lá
+    '#8B5CF6', // violet
+    '#F43F5E', // rose đỏ
+    '#06B6D4', // cyan
+    '#D946EF', // fuchsia
+  ];
 
 export function getChartColor(index: number): string {
     return defaultChartColors[index % defaultChartColors.length];

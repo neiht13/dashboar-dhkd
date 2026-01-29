@@ -54,23 +54,7 @@ function processImportData(
         orderBy,
         orderDirection: orderDirection as 'asc' | 'desc',
         limit: limit || 0,
-    }); [...processedData].sort((a, b) => {
-            const aVal = a[orderBy];
-            const bVal = b[orderBy];
-            if (typeof aVal === 'number' && typeof bVal === 'number') {
-                return orderDirection === 'asc' ? aVal - bVal : bVal - aVal;
-            }
-            return orderDirection === 'asc'
-                ? String(aVal || '').localeCompare(String(bVal || ''))
-                : String(bVal || '').localeCompare(String(aVal || ''));
-        });
-    }
-
-    if (limit && limit > 0) {
-        processedData = processedData.slice(0, limit);
-    }
-
-    return processedData;
+    });
 }
 
 /**

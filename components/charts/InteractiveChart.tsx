@@ -291,7 +291,7 @@ export function InteractiveChart({
                 )}
 
                 {/* Drill-down indicator */}
-                {drillPath.length === 0 && canDrillDown && (
+                {/* {drillPath.length === 0 && canDrillDown && (
                     <div className="absolute top-2 right-2 z-10">
                         <Tooltip>
                             <TooltipTrigger>
@@ -309,7 +309,7 @@ export function InteractiveChart({
                             </TooltipContent>
                         </Tooltip>
                     </div>
-                )}
+                )} */}
 
                 {/* Drill level indicator when drilled */}
                 {drillPath.length > 0 && !isLoading && (

@@ -30,11 +30,16 @@ export type ChartType =
   | 'horizontalBar'
   | 'composed'
   | 'funnel'
+  | 'treemap'
+  | 'waterfall'
+  | 'semicircleGauge'
+  | 'networkMap'
   | 'sizedPie' // Legacy: use pie with pieVariant: 'sized' instead
   | 'map'
   | 'card'
   | 'hexagon'
   | 'statCard'
+  | 'dataTileGrid'
   | 'gauge';
 
 export type AggregationType = 'sum' | 'avg' | 'count' | 'min' | 'max' | 'none';
@@ -61,6 +66,9 @@ export interface DataSource {
   queryMode?: 'simple' | 'custom' | 'import';
   customQuery?: string;
   connectionId?: string;
+  // Stored Procedure settings (for queryMode 'storedProcedure')
+  storedProcedureName?: string;
+  storedProcedureParams?: Record<string, unknown>;
   // Drill-down settings
   drillDownLabelField?: string; // Field to use as X-axis label when drilling down to detail
   // Imported data (for queryMode 'import')
@@ -103,12 +111,14 @@ export interface ChartStyle {
   title?: string;
   titleFontSize?: number;
   titleColor?: string;
+  textColor?: string;
+  gridColor?: string;
   xAxisLabel?: string;
   yAxisLabel?: string;
   stacked?: boolean;
   horizontal?: boolean;
   innerRadius?: number; // for donut chart (0-100 percentage)
-  pieVariant?: 'default' | 'sized' | 'donut' | 'gauge'; // Variant for pie chart
+  pieVariant?: 'default' | 'sized' | 'donut' | 'gauge' | 'semicircle'; // Variant for pie chart
   animation?: boolean;
   gradientFill?: boolean;
   borderRadius?: number;
@@ -122,8 +132,78 @@ export interface ChartStyle {
   cardBackgroundColor?: string;
 
   // Map Specific Styles
-  mapDisplayMode?: 'heatmap' | 'category' | 'value';
-  mapColorScheme?: 'default' | 'blues' | 'greens' | 'reds' | 'purples';
+  mapDisplayMode?: 'heatmap' | 'category' | 'value' | 'coverage';
+  mapColorScheme?: 'default' | 'blues' | 'greens' | 'reds' | 'purples' | 'signal';
+
+  // Conditional Coloring (for bar charts)
+  conditionalColoring?: {
+    enabled: boolean;
+    targetValue?: number;
+    targetField?: string;
+    belowColor?: string;
+    aboveColor?: string;
+    equalColor?: string;
+  };
+
+  // Semi-circle Gauge Specific
+  gaugeMin?: number;
+  gaugeMax?: number;
+  gaugeThresholds?: Array<{
+    value: number;
+    color: string;
+    label?: string;
+  }>;
+  showGaugeNeedle?: boolean;
+
+  // Network Map Specific
+  networkMapLayers?: ('2G' | '3G' | '4G' | '5G')[];
+  showBTSMarkers?: boolean;
+  showCoverageHeatmap?: boolean;
+  enableBTSClustering?: boolean;
+
+  // StatCard KPI specific
+  showGauge?: boolean;
+  kpiPlanValue?: number;
+  kpiThreshold?: number;
+  showStatusBadge?: boolean;
+  showCornerAccent?: boolean;
+
+  // DataTileGrid specific
+  tileGridColumns?: number;
+  tileTargetField?: string;
+  tileActualField?: string;
+}
+
+export interface ChartAnnotationConfig {
+  id: string;
+  type: 'line' | 'area' | 'text' | 'target';
+  label?: string;
+  value?: number;
+  startValue?: number;
+  endValue?: number;
+  axis: 'x' | 'y';
+  color: string;
+  strokeDasharray?: string;
+  opacity?: number;
+  position?: { x: number; y: number };
+}
+
+export interface ForecastConfig {
+  enabled: boolean;
+  periods: number;
+  method: 'linear' | 'exponential' | 'moving_average';
+  showConfidenceInterval: boolean;
+  alpha?: number;
+  window?: number;
+}
+
+export interface AnomalyDetectionConfig {
+  enabled: boolean;
+  method: 'zscore' | 'iqr' | 'threshold' | 'mad';
+  threshold: number;
+  lowerThreshold?: number;
+  upperThreshold?: number;
+  highlightColor?: string;
 }
 
 export interface ChartConfig {
@@ -133,6 +213,10 @@ export interface ChartConfig {
   dataSource?: DataSource;
   style?: ChartStyle;
   colors?: string[]; // Quick color override
+  // New chart enhancement options
+  annotations?: ChartAnnotationConfig[];
+  forecast?: ForecastConfig;
+  anomalyDetection?: AnomalyDetectionConfig;
   createdAt?: Date;
   updatedAt?: Date;
   userId?: string;

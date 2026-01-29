@@ -21,6 +21,14 @@ export interface ISharePermission {
     userId: mongoose.Types.ObjectId;
     permission: 'view' | 'edit';
     addedAt: Date;
+    addedBy?: mongoose.Types.ObjectId;
+}
+
+export interface ITeamSharePermission {
+    teamId: mongoose.Types.ObjectId;
+    permission: 'view' | 'edit';
+    addedAt: Date;
+    addedBy?: mongoose.Types.ObjectId;
 }
 
 export interface IDashboardTab {
@@ -40,6 +48,7 @@ export interface IDashboard extends Document {
     activeTabId?: string;
     ownerId: mongoose.Types.ObjectId;
     sharedWith: ISharePermission[];
+    sharedWithTeams: ITeamSharePermission[];
     isPublic: boolean;
     publicToken?: string;
     publicPermission?: 'view' | 'edit';
@@ -81,6 +90,14 @@ const SharePermissionSchema = new Schema({
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     permission: { type: String, enum: ['view', 'edit'], default: 'view' },
     addedAt: { type: Date, default: Date.now },
+    addedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+}, { _id: false });
+
+const TeamSharePermissionSchema = new Schema({
+    teamId: { type: Schema.Types.ObjectId, ref: 'Team', required: true },
+    permission: { type: String, enum: ['view', 'edit'], default: 'view' },
+    addedAt: { type: Date, default: Date.now },
+    addedBy: { type: Schema.Types.ObjectId, ref: 'User' },
 }, { _id: false });
 
 const DashboardSchema = new Schema<IDashboard>(
@@ -104,6 +121,7 @@ const DashboardSchema = new Schema<IDashboard>(
             index: true,
         },
         sharedWith: [SharePermissionSchema],
+        sharedWithTeams: [TeamSharePermissionSchema],
         isPublic: {
             type: Boolean,
             default: false,

@@ -21,7 +21,50 @@ import {
     DialogTitle,
     DialogFooter,
 } from "@/components/ui/dialog";
-import type { Dashboard, WidgetType } from "@/types";
+import type { Dashboard, WidgetType, LayoutItem } from "@/types";
+
+const GRID_COLS = 12;
+
+// Helper to check if two layout items collide
+const itemsCollide = (a: LayoutItem, b: LayoutItem) => {
+    return a.i !== b.i &&
+        a.x < b.x + b.w &&
+        a.x + a.w > b.x &&
+        a.y < b.y + b.h &&
+        a.y + a.h > b.y;
+};
+
+// Find the first free position for a new widget
+const findFreePosition = (existingLayouts: LayoutItem[], widgetWidth: number, widgetHeight: number): { x: number; y: number } => {
+    // If no existing widgets, place at (0, 0)
+    if (existingLayouts.length === 0) {
+        return { x: 0, y: 0 };
+    }
+
+    // Try positions from top-left, scanning left to right, then top to bottom
+    for (let y = 0; y < 100; y++) {
+        for (let x = 0; x <= GRID_COLS - widgetWidth; x++) {
+            const testLayout: LayoutItem = {
+                i: 'test',
+                x,
+                y,
+                w: widgetWidth,
+                h: widgetHeight,
+            };
+
+            // Check if this position collides with any existing widget
+            const hasCollision = existingLayouts.some(existing => itemsCollide(testLayout, existing));
+
+            if (!hasCollision) {
+                return { x, y };
+            }
+        }
+    }
+
+    // If no free position found, place below the lowest widget
+    const maxY = Math.max(...existingLayouts.map(l => (l.y || 0) + (l.h || 3)), 0);
+    return { x: 0, y: maxY };
+};
 import { UndoRedoControls } from "@/components/dashboard/UndoRedoControls";
 import { VersionHistory } from "@/components/dashboard/VersionHistory";
 import { TemplateSelector } from "@/components/dashboard/TemplateSelector";
@@ -57,7 +100,7 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
     const [showVersionHistory, setShowVersionHistory] = useState(false);
     const [showTemplateSelector, setShowTemplateSelector] = useState(false);
     const [lastDataUpdate, setLastDataUpdate] = useState<Date | null>(null);
-    
+
     // Undo/Redo integration
     const { initializeState, pushState } = useUndoRedoStore();
 
@@ -169,7 +212,7 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
     // Handle template selection
     const handleSelectTemplate = async (template: { widgets: unknown[]; layout: unknown[] }) => {
         if (!currentDashboard) return;
-        
+
         // Generate new IDs for widgets
         const newWidgets = template.widgets.map((w: unknown) => {
             const widget = w as { id: string; type: string; config: unknown; layout: unknown };
@@ -203,7 +246,7 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
     // Create version snapshot before save
     const createVersionSnapshot = async () => {
         if (!currentDashboard || dashboardId === "new") return;
-        
+
         try {
             await fetch('/api/versions', {
                 method: 'POST',
@@ -299,13 +342,65 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
                 config = { title: "Bảng dữ liệu" };
                 w = 6;
                 h = 4;
+            } else if (widgetData.type === "image") {
+                config = {
+                    title: "",
+                    url: "",
+                    alt: "Hình ảnh",
+                    objectFit: "contain"
+                };
+                w = 4;
+                h = 4;
+            } else if (widgetData.type === "iframe") {
+                config = {
+                    title: "",
+                    url: "",
+                    allowFullscreen: true,
+                    sandbox: "allow-scripts allow-same-origin"
+                };
+                w = 6;
+                h = 6;
+            } else if (widgetData.type === "metric") {
+                config = {
+                    title: "Thuê bao PTM",
+                    type: "hexagon",
+                    dataSource: {
+                        yAxis: ['value'],
+                        xAxis: 'name'
+                    },
+                    style: {
+                        cardIcon: "Activity",
+                        colors: ["#3b82f6"]
+                    }
+                };
+                w = 3;
+                h = 3;
+            } else if (widgetData.type === "map") {
+                config = {
+                    title: "Bản đồ phân bố",
+                    type: "map",
+                    dataSource: {
+                        table: "TTVT_Data",
+                        xAxis: "ma_ttvt",
+                        yAxis: ["value"]
+                    }
+                };
+                w = 8;
+                h = 6;
             }
+
+            // Find free position to avoid collisions
+            const existingLayouts = currentDashboard?.widgets
+                .map(w => w.layout)
+                .filter((l): l is LayoutItem => l !== undefined) || [];
+
+            const freePosition = findFreePosition(existingLayouts, w, h);
 
             addWidget({
                 id,
                 type: widgetData.type as WidgetType,
                 config,
-                layout: { i: id, x: 0, y: 0, w, h },
+                layout: { i: id, x: freePosition.x, y: freePosition.y, w, h },
             });
         }
     };
@@ -333,7 +428,7 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
                             variant="outline"
                             size="sm"
                             onClick={() => router.push("/")}
-                            className="gap-2"
+                            className="gap-2 rounded-none font-bold"
                         >
                             <ArrowLeft className="h-4 w-4" />
                             Quay lại
@@ -341,8 +436,8 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
 
                         {/* Undo/Redo Controls */}
                         {isEditing && (
-                            <UndoRedoControls 
-                                onUndo={handleUndoRedo} 
+                            <UndoRedoControls
+                                onUndo={handleUndoRedo}
                                 onRedo={handleUndoRedo}
                                 size="sm"
                             />
@@ -354,7 +449,7 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => setShowTemplateSelector(true)}
-                                className="gap-2"
+                                className="gap-2 rounded-none font-bold"
                             >
                                 <Layout className="h-4 w-4" />
                                 Template
@@ -367,7 +462,7 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => setShowVersionHistory(true)}
-                                className="gap-2"
+                                className="gap-2 rounded-none font-bold"
                             >
                                 <History className="h-4 w-4" />
                                 Lịch sử
@@ -378,7 +473,7 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
                             variant={isEditing ? "secondary" : "outline"}
                             size="sm"
                             onClick={toggleEditing}
-                            className="gap-2"
+                            className="gap-2 rounded-none font-bold"
                         >
                             {isEditing ? (
                                 <>
@@ -397,7 +492,7 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
                             size="sm"
                             onClick={handleSave}
                             disabled={isSaving}
-                            className="gap-2"
+                            className="gap-2 rounded-none font-bold"
                         >
                             <Save className="h-4 w-4" />
                             {isSaving ? "Đang lưu..." : "Lưu"}

@@ -1,10 +1,30 @@
 import { NextResponse } from 'next/server';
 import { getPool, getPoolById } from '@/lib/db';
-import { validateSQLQuery } from '@/lib/security/sql-validator';
+import { validateSQLQuery, setWhitelistedStoredProcedures } from '@/lib/security/sql-validator';
 import { logger } from '@/lib/security/logger';
+import { connectDB } from '@/lib/mongodb';
+import StoredProcedure from '@/models/StoredProcedure';
+
+/**
+ * Load whitelisted stored procedures from database
+ */
+async function loadStoredProcedureWhitelist(): Promise<void> {
+    try {
+        await connectDB();
+        const storedProcedures = await StoredProcedure.find({ isActive: true }).select('name').lean();
+        const procedureNames = storedProcedures.map((sp: any) => sp.name);
+        setWhitelistedStoredProcedures(procedureNames);
+        logger.debug('Loaded SP whitelist', { count: procedureNames.length });
+    } catch (error) {
+        logger.warn('Failed to load SP whitelist, EXEC statements may fail', { error });
+    }
+}
 
 export async function POST(request: Request) {
     try {
+        // Load SP whitelist before processing query
+        await loadStoredProcedureWhitelist();
+
         const body = await request.json();
         const {
             table, xAxis, yAxis, aggregation = 'sum', groupBy,
@@ -23,7 +43,7 @@ export async function POST(request: Request) {
 
             // Validate SQL query using secure validator
             const validation = validateSQLQuery(customQuery);
-            
+
             if (!validation.isValid) {
                 logger.warn('Invalid SQL query rejected', { error: validation.error });
                 return NextResponse.json({
@@ -35,24 +55,24 @@ export async function POST(request: Request) {
             // Build safe WHERE clause if filters are provided
             let finalQuery = validation.sanitizedQuery!;
             const requestBuilder = pool.request();
-            
+
             if (filters && Array.isArray(filters) && filters.length > 0) {
                 // Import sanitizeIdentifier for safe field names
                 const { sanitizeIdentifier } = await import('@/lib/security/sql-validator');
-                
+
                 const whereConditions: string[] = [];
                 filters.forEach((filter: any, index: number) => {
                     try {
                         const sanitizedField = sanitizeIdentifier(filter.field);
                         const paramName = `filterParam${index}`;
                         const operator = filter.operator?.toUpperCase() || '=';
-                        
+
                         // Validate operator
                         const validOperators = ['=', '!=', '>', '<', '>=', '<=', 'LIKE', 'IN'];
                         if (!validOperators.includes(operator)) {
                             throw new Error(`Invalid operator: ${filter.operator}`);
                         }
-                        
+
                         // Use parameterized query
                         if (operator === 'IN' && Array.isArray(filter.value)) {
                             const inParams = filter.value.map((v: any, i: number) => {
@@ -73,7 +93,7 @@ export async function POST(request: Request) {
                         // Skip invalid filters
                     }
                 });
-                
+
                 if (whereConditions.length > 0) {
                     // Wrap query as subquery and add WHERE clause
                     finalQuery = `SELECT * FROM (${finalQuery}) AS _filtered_sub WHERE ${whereConditions.join(' AND ')}`;
@@ -83,8 +103,8 @@ export async function POST(request: Request) {
             // Execute validated and parameterized query
             try {
                 const result = await requestBuilder.query(finalQuery);
-                logger.info('Custom query executed successfully', { 
-                    rowCount: result.recordset.length 
+                logger.info('Custom query executed successfully', {
+                    rowCount: result.recordset.length
                 });
 
                 return NextResponse.json({

@@ -1,24 +1,100 @@
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import Link from "next/link";
-import { Plus, BarChart3, LineChart, PieChart, Trash2, Edit, Copy } from "lucide-react";
+import {
+    Plus, BarChart3, LineChart, PieChart, Trash2, Edit, Copy,
+    Activity, Radar, Layers, ArrowRightLeft, GitMerge, Filter,
+    Gauge, Map, BarChart2, TreePine, GitFork, Signal, Wifi
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AngularCard, AngularCardHeader, AngularCardContent, AngularCardTitle, AngularCardDescription } from "@/components/ui/angular-card";
+import { DynamicToolbar } from "@/components/charts/DynamicToolbar";
+import { DataTile } from "@/components/charts/DataTile";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useChartStore } from "@/stores/chart-store";
+import type { ChartType } from "@/types";
 
 const chartIcons: Record<string, React.ReactNode> = {
-    bar: <BarChart3 className="h-8 w-8" />,
-    line: <LineChart className="h-8 w-8" />,
-    pie: <PieChart className="h-8 w-8" />,
-    area: <BarChart3 className="h-8 w-8" />,
-    radar: <BarChart3 className="h-8 w-8" />,
+    bar: <BarChart3 className="h-6 w-6" />,
+    stackedBar: <Layers className="h-6 w-6" />,
+    horizontalBar: <ArrowRightLeft className="h-6 w-6" />,
+    line: <LineChart className="h-6 w-6" />,
+    area: <Activity className="h-6 w-6" />,
+    pie: <PieChart className="h-6 w-6" />,
+    radar: <Radar className="h-6 w-6" />,
+    composed: <GitMerge className="h-6 w-6" />,
+    funnel: <Filter className="h-6 w-6" />,
+    gauge: <Gauge className="h-6 w-6" />,
+    semicircleGauge: <Signal className="h-6 w-6" />,
+    card: <BarChart2 className="h-6 w-6" />,
+    map: <Map className="h-6 w-6" />,
+    networkMap: <Wifi className="h-6 w-6" />,
+    treemap: <TreePine className="h-6 w-6" />,
+    waterfall: <GitFork className="h-6 w-6" />,
 };
+
+const chartTypeLabels: Record<string, string> = {
+    bar: "Biểu đồ Cột",
+    stackedBar: "Biểu đồ Cột chồng",
+    horizontalBar: "Biểu đồ Cột ngang",
+    line: "Biểu đồ Đường",
+    area: "Biểu đồ Vùng",
+    pie: "Biểu đồ Tròn",
+    radar: "Biểu đồ Radar",
+    composed: "Biểu đồ Kết hợp",
+    funnel: "Biểu đồ Phễu",
+    gauge: "Đồng hồ Gauge",
+    semicircleGauge: "Semi Gauge",
+    card: "Thẻ thống kê",
+    map: "Bản đồ",
+    networkMap: "Network Map",
+    treemap: "Treemap",
+    waterfall: "Waterfall",
+};
+
+const chartTypeColors: Record<string, string> = {
+    bar: "#3b82f6",
+    stackedBar: "#6366f1",
+    horizontalBar: "#8b5cf6",
+    line: "#10b981",
+    area: "#14b8a6",
+    pie: "#f59e0b",
+    radar: "#ef4444",
+    composed: "#ec4899",
+    funnel: "#f97316",
+    gauge: "#06b6d4",
+    semicircleGauge: "#0ea5e9",
+    card: "#84cc16",
+    map: "#22c55e",
+    networkMap: "#0d9488",
+    treemap: "#a855f7",
+    waterfall: "#d946ef",
+};
+
+const filterOptions = [
+    { value: "all", label: "Tất cả" },
+    { value: "bar", label: "Cột" },
+    { value: "line", label: "Đường" },
+    { value: "pie", label: "Tròn" },
+    { value: "other", label: "Khác" },
+];
+
+const sortOptions = [
+    { value: "name", label: "Tên" },
+    { value: "createdAt", label: "Ngày tạo" },
+    { value: "type", label: "Loại" },
+];
 
 export default function ChartsPage() {
     const { charts, setCharts, deleteChart, saveChart } = useChartStore();
     const [isLoading, setIsLoading] = React.useState(true);
+
+    // Filter & Sort State
+    const [searchText, setSearchText] = React.useState("");
+    const [filterType, setFilterType] = React.useState("all");
+    const [sortBy, setSortBy] = React.useState("createdAt");
+    const [sortDir, setSortDir] = React.useState<"asc" | "desc">("desc");
 
     React.useEffect(() => {
         const fetchCharts = async () => {
@@ -38,6 +114,48 @@ export default function ChartsPage() {
         fetchCharts();
     }, [setCharts]);
 
+    // Process charts with filter and sort
+    const processedCharts = useMemo(() => {
+        let data = [...charts];
+
+        // Search filter
+        if (searchText) {
+            const lower = searchText.toLowerCase();
+            data = data.filter(c =>
+                c.name.toLowerCase().includes(lower) ||
+                c.type.toLowerCase().includes(lower)
+            );
+        }
+
+        // Type filter
+        if (filterType !== "all") {
+            if (filterType === "other") {
+                data = data.filter(c => !["bar", "line", "pie"].includes(c.type));
+            } else {
+                data = data.filter(c => c.type === filterType);
+            }
+        }
+
+        // Sort
+        data.sort((a, b) => {
+            let valA: any = a[sortBy as keyof typeof a];
+            let valB: any = b[sortBy as keyof typeof b];
+
+            if (sortBy === "createdAt") {
+                valA = new Date(valA || 0).getTime();
+                valB = new Date(valB || 0).getTime();
+            } else if (typeof valA === "string") {
+                valA = valA.toLowerCase();
+                valB = valB?.toLowerCase() || "";
+            }
+
+            if (valA < valB) return sortDir === "asc" ? -1 : 1;
+            if (valA > valB) return sortDir === "asc" ? 1 : -1;
+            return 0;
+        });
+
+        return data;
+    }, [charts, searchText, filterType, sortBy, sortDir]);
 
     const formatDate = (date?: Date) => {
         if (!date) return "N/A";
@@ -50,8 +168,6 @@ export default function ChartsPage() {
 
     const handleDuplicate = async (chart: any) => {
         try {
-            // Create a copy of the chart config
-            // Remove ID and audit fields to create a new record
             const { _id, id, createdAt, updatedAt, ...chartConfig } = chart;
 
             const newChart = {
@@ -67,9 +183,7 @@ export default function ChartsPage() {
 
             const result = await response.json();
             if (result.success && result.data) {
-                // Update local store
                 saveChart(result.data);
-                // toast.success("Đã nhân bản biểu đồ"); // Assuming sonner is available or will use alert/console for now if not imported
             } else {
                 console.error("Failed to duplicate:", result.error);
             }
@@ -79,136 +193,211 @@ export default function ChartsPage() {
     };
 
     return (
-        <>
-            <div className="flex-1 overflow-y-auto p-6">
-                <div className="max-w-[1400px] mx-auto">
-                    {charts.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-64 text-center">
-                            <div className="size-20 rounded-full bg-[#F1F5F9] flex items-center justify-center mb-4">
-                                <BarChart3 className="h-10 w-10 text-[#64748B]" />
-                            </div>
-                            <h3 className="text-lg font-semibold text-[#0F172A] mb-2">
-                                Chưa có biểu đồ nào
-                            </h3>
-                            <p className="text-sm text-[#64748B] max-w-md mb-4">
-                                Tạo biểu đồ đầu tiên của bạn bằng Chart Designer để bắt đầu xây dựng
-                                dashboards.
-                            </p>
+        <div className="flex-1 overflow-y-auto">
+            {/* Header */}
+            <div className="bg-white border-b border-slate-200 px-6 py-4">
+                <div className="max-w-[1400px] mx-auto flex justify-between items-center">
+                    <div>
+                        <h1 className="text-xl font-black text-slate-900 tracking-tight uppercase">
+                            Thư viện Biểu đồ
+                        </h1>
+                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">
+                            {charts.length} biểu đồ đã tạo
+                        </p>
+                    </div>
+                    <Link href="/charts/new">
+                        <Button className="gap-2 rounded-none font-bold">
+                            <Plus className="h-4 w-4" />
+                            Tạo Chart Mới
+                        </Button>
+                    </Link>
+                </div>
+            </div>
+
+            {/* Stats Summary with DataTile */}
+            <div className="max-w-[1400px] mx-auto px-6 mt-4">
+                <div className="grid grid-cols-4 gap-3">
+                    <DataTile
+                        label="Tổng Charts"
+                        value={charts.length}
+                        color="#3b82f6"
+                        showProgress={false}
+                    />
+                    <DataTile
+                        label="Biểu đồ Cột"
+                        value={charts.filter(c => c.type.includes('bar') || c.type === 'bar').length}
+                        target={charts.length}
+                        color="#6366f1"
+                    />
+                    <DataTile
+                        label="Biểu đồ Đường"
+                        value={charts.filter(c => c.type === 'line' || c.type === 'area').length}
+                        target={charts.length}
+                        color="#10b981"
+                    />
+                    <DataTile
+                        label="Khác"
+                        value={charts.filter(c => !c.type.includes('bar') && c.type !== 'line' && c.type !== 'area').length}
+                        target={charts.length}
+                        color="#f59e0b"
+                    />
+                </div>
+            </div>
+
+            {/* Dynamic Filter Toolbar */}
+            <div className="max-w-[1400px] mx-auto px-6 mt-4">
+                <DynamicToolbar
+                    searchValue={searchText}
+                    onSearchChange={setSearchText}
+                    searchPlaceholder="Tìm biểu đồ..."
+                    filterOptions={filterOptions}
+                    filterValue={filterType}
+                    onFilterChange={setFilterType}
+                    sortOptions={sortOptions}
+                    sortValue={sortBy}
+                    onSortChange={setSortBy}
+                    sortDirection={sortDir}
+                    onSortDirectionToggle={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+                />
+            </div>
+
+            {/* Content */}
+            <div className="max-w-[1400px] mx-auto px-6 py-6">
+                {processedCharts.length === 0 && !isLoading ? (
+                    <div className="flex flex-col items-center justify-center h-64 text-center bg-white border-2 border-dashed border-slate-200">
+                        <div className="size-16 bg-slate-100 flex items-center justify-center mb-4">
+                            <BarChart3 className="h-8 w-8 text-slate-400" />
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-800 mb-2">
+                            {searchText || filterType !== "all" ? "Không tìm thấy biểu đồ" : "Chưa có biểu đồ nào"}
+                        </h3>
+                        <p className="text-sm text-slate-500 max-w-md mb-4">
+                            {searchText || filterType !== "all"
+                                ? "Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm"
+                                : "Tạo biểu đồ đầu tiên để bắt đầu xây dựng dashboards"}
+                        </p>
+                        {!searchText && filterType === "all" && (
                             <Link href="/charts/new">
-                                <Button className="gap-2">
+                                <Button className="gap-2 rounded-none">
                                     <Plus className="h-4 w-4" />
                                     Tạo Chart Mới
                                 </Button>
                             </Link>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {charts.map((chart) => (
-                                <Card key={chart.id} className="hover:shadow-md transition-shadow">
-                                    <CardHeader className="pb-3">
-                                        <div className="flex items-start justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <div className="size-12 rounded-lg bg-[#0052CC]/10 flex items-center justify-center text-[#0052CC]">
-                                                    {chartIcons[chart.type] || <BarChart3 className="h-6 w-6" />}
-                                                </div>
-                                                <div>
-                                                    <CardTitle className="text-base">{chart.name}</CardTitle>
-                                                    <CardDescription className="capitalize">
-                                                        {chart.type} Chart
-                                                    </CardDescription>
-                                                </div>
-                                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                        {processedCharts.map((chart) => (
+                            <AngularCard
+                                key={chart.id}
+                                accentColor={chartTypeColors[chart.type] || "#3b82f6"}
+                            >
+                                <AngularCardHeader>
+                                    <div className="flex items-start gap-3">
+                                        <div
+                                            className="size-10 flex items-center justify-center text-white"
+                                            style={{ backgroundColor: chartTypeColors[chart.type] || "#3b82f6" }}
+                                        >
+                                            {chartIcons[chart.type] || <BarChart3 className="h-5 w-5" />}
                                         </div>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div className="space-y-3">
-                                            <div className="text-xs text-[#64748B]">
-                                                <p>
-                                                    <span className="font-medium">Table:</span>{" "}
-                                                    {chart.dataSource?.table || 'N/A'}
-                                                </p>
-                                                <p>
-                                                    <span className="font-medium">X-Axis:</span>{" "}
-                                                    {chart.dataSource?.xAxis || 'N/A'}
-                                                </p>
-                                                <p>
-                                                    <span className="font-medium">Y-Axis:</span>{" "}
-                                                    {(chart.dataSource?.yAxis || []).join(", ")}
-                                                </p>
-                                            </div>
+                                        <div className="flex-1 min-w-0">
+                                            <AngularCardTitle className="truncate">{chart.name}</AngularCardTitle>
+                                            <AngularCardDescription>
+                                                {chartTypeLabels[chart.type] || chart.type}
+                                            </AngularCardDescription>
+                                        </div>
+                                    </div>
+                                </AngularCardHeader>
 
-                                            <div className="flex items-center justify-between pt-3 border-t border-[#E2E8F0]">
-                                                <span className="text-xs text-[#64748B]">
-                                                    Created {formatDate(chart.createdAt ? new Date(chart.createdAt) : undefined)}
+                                <AngularCardContent>
+                                    <div className="space-y-3">
+                                        <div className="text-[10px] text-slate-500 space-y-0.5">
+                                            <p className="flex justify-between">
+                                                <span className="uppercase font-bold">Bảng:</span>
+                                                <span className="font-medium text-slate-700">{chart.dataSource?.table || 'N/A'}</span>
+                                            </p>
+                                            <p className="flex justify-between">
+                                                <span className="uppercase font-bold">X-Axis:</span>
+                                                <span className="font-medium text-slate-700">{chart.dataSource?.xAxis || 'N/A'}</span>
+                                            </p>
+                                            <p className="flex justify-between">
+                                                <span className="uppercase font-bold">Y-Axis:</span>
+                                                <span className="font-medium text-slate-700 truncate max-w-[120px]">
+                                                    {(chart.dataSource?.yAxis || []).join(", ") || 'N/A'}
                                                 </span>
-                                                <div className="flex items-center gap-1">
-                                                    <Link href={`/charts/new?edit=${chart.id}`}>
-                                                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                                                            <Edit className="h-4 w-4" />
-                                                        </Button>
-                                                    </Link>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-8 w-8 text-[#0052CC] hover:text-[#0052CC]"
-                                                        onClick={() => handleDuplicate(chart)}
-                                                        title="Nhân bản"
-                                                    >
-                                                        <Copy className="h-4 w-4" />
+                                            </p>
+                                        </div>
+
+                                        <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                                            <span className="text-[10px] text-slate-400 font-bold">
+                                                {formatDate(chart.createdAt ? new Date(chart.createdAt) : undefined)}
+                                            </span>
+                                            <div className="flex items-center gap-0.5">
+                                                <Link href={`/charts/new?edit=${chart.id}`}>
+                                                    <Button variant="ghost" size="icon" className="h-7 w-7 rounded-none">
+                                                        <Edit className="h-3.5 w-3.5" />
                                                     </Button>
-                                                    <Popover>
-                                                        <PopoverTrigger asChild>
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="icon"
-                                                                className="h-8 w-8 text-[#D10029] hover:text-[#D10029]"
-                                                                title="Xóa biểu đồ"
-                                                            >
-                                                                <Trash2 className="h-4 w-4" />
-                                                            </Button>
-                                                        </PopoverTrigger>
-                                                        <PopoverContent className="w-80" align="end">
-                                                            <div className="space-y-4">
-                                                                <h4 className="font-medium text-slate-900">Xóa biểu đồ?</h4>
-                                                                <p className="text-sm text-slate-500">
-                                                                    Hành động này không thể hoàn tác. Biểu đồ sẽ bị xóa vĩnh viễn khỏi thư viện.
-                                                                </p>
-                                                                <div className="flex justify-end gap-2">
-                                                                    <Button
-                                                                        variant="destructive"
-                                                                        size="sm"
-                                                                        onClick={() => deleteChart(chart.id)}
-                                                                    >
-                                                                        Xác nhận xóa
-                                                                    </Button>
-                                                                </div>
+                                                </Link>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-7 w-7 text-blue-600 hover:text-blue-700 rounded-none"
+                                                    onClick={() => handleDuplicate(chart)}
+                                                    title="Nhân bản"
+                                                >
+                                                    <Copy className="h-3.5 w-3.5" />
+                                                </Button>
+                                                <Popover>
+                                                    <PopoverTrigger>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-7 w-7 text-red-500 hover:text-red-600 rounded-none"
+                                                            title="Xóa biểu đồ"
+                                                        >
+                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-72 rounded-none" align="end">
+                                                        <div className="space-y-4">
+                                                            <h4 className="font-bold text-slate-900">Xóa biểu đồ?</h4>
+                                                            <p className="text-sm text-slate-500">
+                                                                Hành động này không thể hoàn tác. Biểu đồ sẽ bị xóa vĩnh viễn.
+                                                            </p>
+                                                            <div className="flex justify-end gap-2">
+                                                                <Button
+                                                                    variant="destructive"
+                                                                    size="sm"
+                                                                    className="rounded-none"
+                                                                    onClick={() => deleteChart(chart.id)}
+                                                                >
+                                                                    Xác nhận xóa
+                                                                </Button>
                                                             </div>
-                                                        </PopoverContent>
-                                                    </Popover>
-                                                </div>
+                                                        </div>
+                                                    </PopoverContent>
+                                                </Popover>
                                             </div>
                                         </div>
-                                    </CardContent>
-                                </Card>
-                            ))}
+                                    </div>
+                                </AngularCardContent>
+                            </AngularCard>
+                        ))}
 
-                            {/* Create New Chart Card */}
-                            <Link href="/charts/new">
-                                <Card className="hover:shadow-md hover:border-[#0052CC] transition-all cursor-pointer h-full border-dashed">
-                                    <CardContent className="flex flex-col items-center justify-center h-full min-h-[200px]">
-                                        <div className="size-12 rounded-full bg-[#F1F5F9] flex items-center justify-center mb-3">
-                                            <Plus className="h-6 w-6 text-[#64748B]" />
-                                        </div>
-                                        <p className="text-sm font-semibold text-[#0F172A]">
-                                            Tạo Chart Mới
-                                        </p>
-                                    </CardContent>
-                                </Card>
-                            </Link>
-                        </div>
-                    )}
-                </div>
+                        {/* Create New Chart Card */}
+                        <Link href="/charts/new">
+                            <div className="bg-white border-2 border-dashed border-slate-200 hover:border-blue-500 transition-all cursor-pointer h-full min-h-[200px] flex flex-col items-center justify-center">
+                                <div className="size-12 bg-slate-100 flex items-center justify-center mb-3">
+                                    <Plus className="h-6 w-6 text-slate-500" />
+                                </div>
+                                <p className="text-sm font-bold text-slate-700 uppercase tracking-wide">
+                                    Tạo Chart Mới
+                                </p>
+                            </div>
+                        </Link>
+                    </div>
+                )}
             </div>
-        </>
+        </div>
     );
 }

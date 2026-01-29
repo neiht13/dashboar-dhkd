@@ -30,6 +30,7 @@ import {
     Legend,
     ResponsiveContainer,
     Label,
+    ReferenceLine,
 } from "recharts";
 import * as icons from "lucide-react";
 import type { ChartConfig } from "@/types";
@@ -38,6 +39,38 @@ import { getChartColor } from "@/lib/utils";
 import { MapChart } from "./MapChart.lazy";
 import { HexagonStat } from "./HexagonStat";
 import { StatCard } from "./StatCard";
+// Lazy load new chart components
+import dynamic from "next/dynamic";
+
+const FunnelChartComponent = dynamic(() => import("./FunnelChart").then(mod => ({ default: mod.FunnelChartComponent })), {
+    ssr: false,
+    loading: () => <div className="flex items-center justify-center h-full"><span className="animate-pulse">Loading...</span></div>,
+});
+
+const TreemapChartComponent = dynamic(() => import("./TreemapChart").then(mod => ({ default: mod.TreemapChartComponent })), {
+    ssr: false,
+    loading: () => <div className="flex items-center justify-center h-full"><span className="animate-pulse">Loading...</span></div>,
+});
+
+const WaterfallChartComponent = dynamic(() => import("./WaterfallChart").then(mod => ({ default: mod.WaterfallChartComponent })), {
+    ssr: false,
+    loading: () => <div className="flex items-center justify-center h-full"><span className="animate-pulse">Loading...</span></div>,
+});
+
+const SemiCircleGauge = dynamic(() => import("./SemiCircleGauge").then(mod => ({ default: mod.SemiCircleGauge })), {
+    ssr: false,
+    loading: () => <div className="flex items-center justify-center h-full"><span className="animate-pulse">Loading...</span></div>,
+});
+
+const NetworkCoverageMap = dynamic(() => import("./NetworkCoverageMap").then(mod => ({ default: mod.NetworkCoverageMap })), {
+    ssr: false,
+    loading: () => <div className="flex items-center justify-center h-full"><span className="animate-pulse">Loading...</span></div>,
+});
+
+const UnitTileGrid = dynamic(() => import("./UnitTileGrid").then(mod => ({ default: mod.UnitTileGrid })), {
+    ssr: false,
+    loading: () => <div className="flex items-center justify-center h-full"><span className="animate-pulse">Loading...</span></div>,
+});
 
 interface DynamicChartProps {
     config: ChartConfig;
@@ -168,7 +201,7 @@ export function DynamicChart({
     chartId,
 }: DynamicChartProps) {
     // Responsive height calculation
-    const chartHeight = typeof height === 'number' 
+    const chartHeight = typeof height === 'number'
         ? Math.max(200, height) // Minimum height
         : height;
     const { type, dataSource, style } = config;
@@ -240,6 +273,11 @@ export function DynamicChart({
     const composedFieldTypes = style?.composedFieldTypes || {};
     const yAxisFieldLabels = style?.yAxisFieldLabels || {};
     const yAxisFieldColors = style?.yAxisFieldColors || {};
+
+    // General styling
+    const textColor = style?.textColor || "#64748B";
+    const gridColor = style?.gridColor || "#E2E8F0";
+    const axisColor = style?.gridColor || "#E2E8F0"; // Axis lines match grid or generic border
 
     // Get display label for a field (custom or original)
     const getFieldLabel = (field: string): string => yAxisFieldLabels[field] || getLabel(field);
@@ -364,11 +402,22 @@ export function DynamicChart({
             case "card":
             case "statCard":
                 // Unified card component - supports both simple and metric cards
+                // Enhanced with KPI layout and AngularGauge support
                 const cardTitle = style?.title || (type === 'statCard' ? "Thống kê" : undefined);
                 const cardIcon = style?.cardIcon;
                 const cardMetrics = (config.dataSource as any)?.metrics || [];
                 const cardBackgroundColor = style?.cardBackgroundColor || "#ffffff";
                 const cardAccentColor = colors[0] || "#0066FF";
+
+                // KPI Layout props from style (từ example.tsx pattern)
+                const cardLayout = (style as any)?.cardLayout || (type === 'statCard' ? 'kpi' : 'list'); // Default to kpi for statCard
+                const cardShowGauge = (style as any)?.showGauge || false;
+                const cardGaugeValue = (style as any)?.gaugeValue;
+                const cardPlanValue = (style as any)?.kpiPlanValue || (style as any)?.planValue; // Support both naming conventions
+                const cardThreshold = (style as any)?.kpiThreshold || (style as any)?.threshold || 100;
+                const cardShowCornerAccent = (style as any)?.showCornerAccent || false;
+                const cardShowStatusBadge = (style as any)?.showStatusBadge || false;
+                const cardGridCols = (style as any)?.gridCols || 2;
 
                 return (
                     <StatCard
@@ -379,7 +428,30 @@ export function DynamicChart({
                         dataSource={dataSource}
                         backgroundColor={cardBackgroundColor}
                         accentColor={cardAccentColor}
+                        layout={cardLayout}
+                        gridCols={cardGridCols}
+                        showGauge={cardShowGauge}
+                        gaugeValue={cardGaugeValue}
+                        planValue={cardPlanValue}
+                        threshold={cardThreshold}
+                        showCornerAccent={cardShowCornerAccent}
+                        showStatusBadge={cardShowStatusBadge}
                     />
+                );
+
+            case "dataTileGrid":
+                return (
+                    <div className="h-full overflow-auto custom-scrollbar">
+                        <UnitTileGrid
+                            data={filteredData}
+                            labelField={dataSource?.xAxis || 'name'}
+                            valueField={style?.tileActualField || (dataSource?.yAxis?.[0] || 'value')}
+                            targetField={style?.tileTargetField}
+                            actualField={style?.tileActualField}
+                            columns={(style?.tileGridColumns as any) || 4}
+                            className="p-1"
+                        />
+                    </div>
                 );
 
             case "line":
@@ -404,24 +476,25 @@ export function DynamicChart({
                                     </linearGradient>
                                 ))}
                             </defs>
-                            {style?.showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />}
+                            {style?.showGrid && <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />}
                             <XAxis
+                                type="category"
                                 dataKey={dataSource?.xAxis || 'name'}
-                                tick={{ fontSize: 11, fill: "#64748B", fontWeight: 500 }}
-                                axisLine={{ stroke: "#E2E8F0" }}
+                                tick={{ fontSize: 11, fill: textColor, fontWeight: 500 }}
+                                axisLine={{ stroke: axisColor }}
                                 tickLine={false}
                                 height={style?.xAxisLabel ? 40 : 30}
                             >
-                                {style?.xAxisLabel && <Label value={style.xAxisLabel} offset={-5} position="insideBottom" fill="#64748B" fontSize={12} />}
+                                {style?.xAxisLabel && <Label value={style.xAxisLabel} offset={-5} position="insideBottom" fill={textColor} fontSize={12} />}
                             </XAxis>
                             <YAxis
                                 tickFormatter={formatYAxisTick}
-                                tick={{ fontSize: 11, fill: "#64748B", fontWeight: 500 }}
+                                tick={{ fontSize: 11, fill: textColor, fontWeight: 500 }}
                                 axisLine={false}
                                 tickLine={false}
                                 width={80}
                             >
-                                {style?.yAxisLabel && <Label value={style.yAxisLabel} angle={-90} position="insideLeft" style={{ textAnchor: 'middle', fill: '#64748B', fontSize: 12 }} />}
+                                {style?.yAxisLabel && <Label value={style.yAxisLabel} angle={-90} position="insideLeft" style={{ textAnchor: 'middle', fill: textColor, fontSize: 12 }} />}
                             </YAxis>
                             {style?.showTooltip && <Tooltip content={<TooltipComponent />} />}
                             {style?.showLegend && <Legend content={renderLegend()} verticalAlign={legendPosition as 'top' | 'bottom'} />}
@@ -483,56 +556,113 @@ export function DynamicChart({
                                         <stop offset="100%" stopColor={getFieldColor(field, index)} stopOpacity={0.7} />
                                     </linearGradient>
                                 ))}
+                                {/* Conditional coloring gradients */}
+                                {style?.conditionalColoring?.enabled && (
+                                    <>
+                                        <linearGradient id="bar-gradient-above" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="0%" stopColor={style.conditionalColoring.aboveColor || "#22c55e"} stopOpacity={1} />
+                                            <stop offset="100%" stopColor={style.conditionalColoring.aboveColor || "#22c55e"} stopOpacity={0.7} />
+                                        </linearGradient>
+                                        <linearGradient id="bar-gradient-below" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="0%" stopColor={style.conditionalColoring.belowColor || "#ef4444"} stopOpacity={1} />
+                                            <stop offset="100%" stopColor={style.conditionalColoring.belowColor || "#ef4444"} stopOpacity={0.7} />
+                                        </linearGradient>
+                                        <linearGradient id="bar-gradient-equal" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="0%" stopColor={style.conditionalColoring.equalColor || "#f59e0b"} stopOpacity={1} />
+                                            <stop offset="100%" stopColor={style.conditionalColoring.equalColor || "#f59e0b"} stopOpacity={0.7} />
+                                        </linearGradient>
+                                    </>
+                                )}
                             </defs>
-                            {style?.showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />}
+                            {style?.showGrid && <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />}
                             <XAxis
+                                type="category"
                                 dataKey={dataSource?.xAxis || 'name'}
-                                tick={{ fontSize: 11, fill: "#64748B", fontWeight: 500 }}
-                                axisLine={{ stroke: "#E2E8F0" }}
+                                tick={{ fontSize: 11, fill: textColor, fontWeight: 500 }}
+                                axisLine={{ stroke: axisColor }}
                                 tickLine={false}
                                 height={style?.xAxisLabel ? 40 : 30}
                             >
-                                {style?.xAxisLabel && <Label value={style.xAxisLabel} offset={-5} position="insideBottom" fill="#64748B" fontSize={12} />}
+                                {style?.xAxisLabel && <Label value={style.xAxisLabel} offset={-5} position="insideBottom" fill={textColor} fontSize={12} />}
                             </XAxis>
                             <YAxis
                                 tickFormatter={formatYAxisTick}
-                                tick={{ fontSize: 11, fill: "#64748B", fontWeight: 500 }}
+                                tick={{ fontSize: 11, fill: textColor, fontWeight: 500 }}
                                 axisLine={false}
                                 tickLine={false}
                                 width={80}
                             >
-                                {style?.yAxisLabel && <Label value={style.yAxisLabel} angle={-90} position="insideLeft" style={{ textAnchor: 'middle', fill: '#64748B', fontSize: 12 }} />}
+                                {style?.yAxisLabel && <Label value={style.yAxisLabel} angle={-90} position="insideLeft" style={{ textAnchor: 'middle', fill: textColor, fontSize: 12 }} />}
                             </YAxis>
+                            {/* Reference line for target */}
+                            {style?.conditionalColoring?.enabled && style.conditionalColoring.targetValue !== undefined && (
+                                <ReferenceLine
+                                    y={style.conditionalColoring.targetValue}
+                                    stroke={style.conditionalColoring.equalColor || "#f59e0b"}
+                                    strokeDasharray="5 5"
+                                    strokeWidth={2}
+                                    label={{ value: 'Mục tiêu', fill: '#64748B', fontSize: 10, position: 'right' }}
+                                />
+                            )}
                             {style?.showTooltip && <Tooltip content={<TooltipComponent />} cursor={{ fill: 'rgba(0, 102, 255, 0.05)' }} />}
                             {style?.showLegend && <Legend content={renderLegend()} verticalAlign={legendPosition as 'top' | 'bottom'} />}
-                            {/* Pass 1: Draw bars */}
-                            {(dataSource?.yAxis || []).map((field, index) => (
-                                <Bar
-                                    key={field}
-                                    dataKey={field}
-                                    name={field}
-                                    fill={`url(#bar-gradient-${index})`}
-                                    radius={[4, 4, 0, 0]}
-                                    {...animationProps}
-                                />
-                            ))}
-                            {/* Pass 2: Draw labels */}
-                            {showDataLabels && (dataSource?.yAxis || []).map((field, index) => (
-                                <Bar
-                                    key={`label-${field}`}
-                                    dataKey={field}
-                                    fill="transparent"
-                                    isAnimationActive={false}
-                                    legendType="none"
-                                    tooltipType="none"
-                                >
-                                    <LabelList
+                            {/* Draw bars with conditional coloring */}
+                            {(dataSource?.yAxis || []).map((field, index) => {
+                                const conditionalEnabled = style?.conditionalColoring?.enabled;
+                                const targetValue = style?.conditionalColoring?.targetValue;
+                                const targetField = style?.conditionalColoring?.targetField || field;
+
+                                if (conditionalEnabled && targetField === field && targetValue !== undefined) {
+                                    // Conditional coloring mode - use Cell for each bar
+                                    return (
+                                        <Bar
+                                            key={field}
+                                            dataKey={field}
+                                            name={field}
+                                            radius={[4, 4, 0, 0]}
+                                            {...animationProps}
+                                        >
+                                            {filteredData.map((entry, entryIndex) => {
+                                                const value = Number(entry[field]);
+                                                let gradientId = 'bar-gradient-equal';
+                                                if (value > targetValue) {
+                                                    gradientId = 'bar-gradient-above';
+                                                } else if (value < targetValue) {
+                                                    gradientId = 'bar-gradient-below';
+                                                }
+                                                return <Cell key={`cell-${entryIndex}`} fill={`url(#${gradientId})`} />;
+                                            })}
+                                            {showDataLabels && (
+                                                <LabelList
+                                                    dataKey={field}
+                                                    position={dataLabelPosition}
+                                                    content={renderCustomLabel}
+                                                />
+                                            )}
+                                        </Bar>
+                                    );
+                                }
+
+                                // Standard mode
+                                return (
+                                    <Bar
+                                        key={field}
                                         dataKey={field}
-                                        position={dataLabelPosition}
-                                        content={renderCustomLabel}
-                                    />
-                                </Bar>
-                            ))}
+                                        name={field}
+                                        fill={`url(#bar-gradient-${index})`}
+                                        radius={[4, 4, 0, 0]}
+                                        {...animationProps}
+                                    >
+                                        {showDataLabels && (
+                                            <LabelList
+                                                dataKey={field}
+                                                position={dataLabelPosition}
+                                                content={renderCustomLabel}
+                                            />
+                                        )}
+                                    </Bar>
+                                );
+                            })}
                         </BarChart>
                     </ResponsiveContainer>
                 );
@@ -556,6 +686,7 @@ export function DynamicChart({
                             </defs>
                             {style?.showGrid && <CartesianGrid strokeDasharray="0" stroke="#E2E8F0" vertical={false} />}
                             <XAxis
+                                type="category"
                                 dataKey={dataSource?.xAxis}
                                 tick={{ fontSize: 11, fill: "#64748B", fontWeight: 500 }}
                                 axisLine={{ stroke: "#E2E8F0" }}
@@ -724,24 +855,25 @@ export function DynamicChart({
                                     }
                                 `}
                             </style>
-                            {style?.showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />}
+                            {style?.showGrid && <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />}
                             <XAxis
+                                type="category"
                                 dataKey={dataSource?.xAxis || 'name'}
-                                tick={{ fontSize: 11, fill: "#64748B", fontWeight: 500 }}
-                                axisLine={{ stroke: "#E2E8F0" }}
+                                tick={{ fontSize: 11, fill: textColor, fontWeight: 500 }}
+                                axisLine={{ stroke: axisColor }}
                                 tickLine={false}
                                 height={style?.xAxisLabel ? 40 : 30}
                             >
-                                {style?.xAxisLabel && <Label value={style.xAxisLabel} offset={-5} position="insideBottom" fill="#64748B" fontSize={12} />}
+                                {style?.xAxisLabel && <Label value={style.xAxisLabel} offset={-5} position="insideBottom" fill={textColor} fontSize={12} />}
                             </XAxis>
                             <YAxis
                                 tickFormatter={formatYAxisTick}
-                                tick={{ fontSize: 11, fill: "#64748B", fontWeight: 500 }}
+                                tick={{ fontSize: 11, fill: textColor, fontWeight: 500 }}
                                 axisLine={false}
                                 tickLine={false}
                                 width={80}
                             >
-                                {style?.yAxisLabel && <Label value={style.yAxisLabel} angle={-90} position="insideLeft" style={{ textAnchor: 'middle', fill: '#64748B', fontSize: 12 }} />}
+                                {style?.yAxisLabel && <Label value={style.yAxisLabel} angle={-90} position="insideLeft" style={{ textAnchor: 'middle', fill: textColor, fontSize: 12 }} />}
                             </YAxis>
                             {style?.showTooltip && <Tooltip content={<TooltipComponent />} cursor={{ stroke: '#94A3B8', strokeWidth: 1, strokeDasharray: '4 4' }} />}
                             {style?.showLegend && <Legend content={renderLegend()} verticalAlign={legendPosition as 'top' | 'bottom'} />}
@@ -970,12 +1102,12 @@ export function DynamicChart({
                             onClick={(e) => e?.activePayload?.[0]?.payload && handleChartClick(e.activePayload[0].payload)}
                             style={clickableCursor}
                         >
-                            <PolarGrid stroke="#E2E8F0" />
+                            <PolarGrid stroke={gridColor} />
                             <PolarAngleAxis
                                 dataKey={dataSource.xAxis}
-                                tick={{ fontSize: 11, fill: "#64748B", fontWeight: 500 }}
+                                tick={{ fontSize: 11, fill: textColor, fontWeight: 500 }}
                             />
-                            <PolarRadiusAxis tick={{ fontSize: 10, fill: "#94A3B8" }} />
+                            <PolarRadiusAxis tick={{ fontSize: 10, fill: textColor }} />
                             {style?.showTooltip && <Tooltip content={<TooltipComponent />} />}
                             {style?.showLegend && <Legend content={renderLegend()} verticalAlign={legendPosition as 'top' | 'bottom'} />}
                             {dataSource?.yAxis.map((field, index) => (
@@ -1049,6 +1181,7 @@ export function DynamicChart({
                             </defs>
                             {style?.showGrid && <CartesianGrid strokeDasharray="0" stroke="#E2E8F0" vertical={false} />}
                             <XAxis
+                                type="category"
                                 dataKey={dataSource.xAxis}
                                 tick={{ fontSize: 11, fill: "#64748B", fontWeight: 500 }}
                                 axisLine={{ stroke: "#E2E8F0" }}
@@ -1282,6 +1415,118 @@ export function DynamicChart({
                     />
                 );
 
+            case "treemap":
+                // Treemap for hierarchical data
+                const treemapValueKey = dataSource?.yAxis?.[0] || 'value';
+                const treemapNameKey = dataSource?.xAxis || 'name';
+
+                const treemapData = filteredData.map((item, index) => ({
+                    name: String(item[treemapNameKey] || `Item ${index + 1}`),
+                    value: Number(item[treemapValueKey] || 0),
+                    children: (item as any).children?.map((child: any, childIndex: number) => ({
+                        name: String(child[treemapNameKey] || child.name || `Child ${childIndex + 1}`),
+                        value: Number(child[treemapValueKey] || child.value || 0),
+                    })),
+                }));
+
+                return (
+                    <TreemapChartComponent
+                        data={treemapData}
+                        colors={colors}
+                        height={typeof chartHeight === 'number' ? chartHeight : 400}
+                        showLabels={showDataLabels || true}
+                        showTooltip={style?.showTooltip !== false}
+                        enableDrillDown={true}
+                        valueFormatter={formatDataLabel}
+                    />
+                );
+
+            case "waterfall":
+                // Waterfall chart for cumulative changes
+                const waterfallValueKey = dataSource?.yAxis?.[0] || 'value';
+                const waterfallNameKey = dataSource?.xAxis || 'name';
+
+                const waterfallData = filteredData.map((item, index) => {
+                    const value = Number(item[waterfallValueKey] || 0);
+                    const isTotal = Boolean((item as any).isTotal);
+                    const itemType = (item as any).type as "start" | "increase" | "decrease" | "total" | undefined;
+
+                    // Auto-detect type if not specified
+                    let derivedType: "start" | "increase" | "decrease" | "total";
+                    if (itemType) {
+                        derivedType = itemType;
+                    } else if (isTotal) {
+                        derivedType = "total";
+                    } else if (index === 0) {
+                        derivedType = "start";
+                    } else if (value >= 0) {
+                        derivedType = "increase";
+                    } else {
+                        derivedType = "decrease";
+                    }
+
+                    return {
+                        name: String(item[waterfallNameKey] || ''),
+                        value: value,
+                        type: derivedType,
+                    };
+                });
+
+                return (
+                    <WaterfallChartComponent
+                        data={waterfallData}
+                        colors={{
+                            start: colors[2] || "#64748b",
+                            increase: style?.conditionalColoring?.aboveColor || colors[0] || "#22c55e",
+                            decrease: style?.conditionalColoring?.belowColor || "#ef4444",
+                            total: colors[1] || "#3b82f6",
+                        }}
+                        height={typeof chartHeight === 'number' ? chartHeight : 400}
+                        showLabels={showDataLabels || true}
+                        showTooltip={style?.showTooltip !== false}
+                        showConnectors={true}
+                        valueFormatter={formatDataLabel}
+                    />
+                );
+
+            case "semicircleGauge":
+                // Semi-circle gauge for KPIs
+                const gaugeValueKey = dataSource?.yAxis?.[0] || 'value';
+                const gaugeCurrentValue = Number(filteredData[0]?.[gaugeValueKey] || 0);
+
+                return (
+                    <div className="flex items-center justify-center h-full py-4">
+                        <SemiCircleGauge
+                            value={gaugeCurrentValue}
+                            min={style?.gaugeMin ?? 0}
+                            max={style?.gaugeMax ?? 100}
+                            label={style?.title || getLabel(gaugeValueKey)}
+                            thresholds={style?.gaugeThresholds || [
+                                { value: 50, color: "#ef4444", label: "Thấp" },
+                                { value: 75, color: "#f59e0b", label: "TB" },
+                                { value: 100, color: "#22c55e", label: "Tốt" },
+                            ]}
+                            showNeedle={style?.showGaugeNeedle !== false}
+                            size="lg"
+                        />
+                    </div>
+                );
+
+            case "networkMap":
+                // Network coverage map with BTS stations
+                const networkData = (config as any).networkData || (dataSource as any)?.networkData || [];
+
+                return (
+                    <NetworkCoverageMap
+                        stations={networkData}
+                        height={typeof chartHeight === 'number' ? chartHeight : 500}
+                        enableLayers={style?.networkMapLayers !== undefined}
+                        enableClustering={style?.enableBTSClustering !== false}
+                    />
+                );
+
+
+
             default:
                 return (
                     <div className="flex items-center justify-center h-full text-[#64748B]">
@@ -1293,7 +1538,7 @@ export function DynamicChart({
 
     return (
         <div className="w-full h-full animate-fade-in relative">
-            {style?.title && (
+            {/* {style?.title && (
                 <h3
                     className="font-semibold text-[#0F172A] mb-3"
                     style={{
@@ -1303,7 +1548,7 @@ export function DynamicChart({
                 >
                     {style.title}
                 </h3>
-            )}
+            )} */}
 
             {renderChart()}
         </div>

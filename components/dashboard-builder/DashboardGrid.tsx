@@ -120,6 +120,79 @@ const resolveLayout = (layout: LayoutItem[], activeId: string): LayoutItem[] => 
     return sorted;
 };
 
+// Delete Widget Button Component
+function DeleteWidgetButton({ widgetId }: { widgetId: string }) {
+    const { removeWidget } = useDashboardStore();
+    const [isOpen, setIsOpen] = useState(false);
+
+    const handleDelete = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        e.preventDefault();
+        try {
+            removeWidget(widgetId);
+            setIsOpen(false);
+        } catch (error) {
+            console.error("Error removing widget:", error);
+        }
+    };
+
+    return (
+        <Popover open={isOpen} onOpenChange={setIsOpen}>
+            <PopoverTrigger asChild>
+                <button
+                    type="button"
+                    className="h-5 w-5 text-white hover:bg-red-500 rounded flex items-center justify-center transition-colors"
+                    onMouseDown={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                    }}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setIsOpen(true);
+                    }}
+                    title="Xóa"
+                >
+                    <X className="h-3 w-3" />
+                </button>
+            </PopoverTrigger>
+            <PopoverContent 
+                className="w-60 p-3 z-50" 
+                align="end" 
+                onMouseDown={(e) => e.stopPropagation()} 
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="space-y-3">
+                    <h4 className="font-medium text-sm text-slate-900">Xóa Widget?</h4>
+                    <p className="text-xs text-slate-600">Hành động này không thể hoàn tác.</p>
+                    <div className="flex justify-end gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                setIsOpen(false);
+                            }}
+                        >
+                            Hủy
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={handleDelete}
+                        >
+                            Xóa
+                        </Button>
+                    </div>
+                </div>
+            </PopoverContent>
+        </Popover>
+    );
+}
+
 export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridProps = {}) {
     const {
         currentDashboard,
@@ -160,6 +233,23 @@ export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridPr
         return () => resizeObserver.disconnect();
     }, []);
     const [chartDataCache, setChartDataCache] = useState<Record<string, any[]>>({});
+
+    // Clear cache when widget is removed
+    useEffect(() => {
+        if (!currentDashboard) return;
+        const currentWidgetIds = new Set(currentDashboard.widgets.map(w => w.id));
+        const cachedWidgetIds = Object.keys(chartDataCache);
+        
+        // Remove cache for widgets that no longer exist
+        const widgetsToRemove = cachedWidgetIds.filter(id => !currentWidgetIds.has(id));
+        if (widgetsToRemove.length > 0) {
+            setChartDataCache(prev => {
+                const newCache = { ...prev };
+                widgetsToRemove.forEach(id => delete newCache[id]);
+                return newCache;
+            });
+        }
+    }, [currentDashboard?.widgets, chartDataCache]);
     const [chartTypeOverrides, setChartTypeOverrides] = useState<Record<string, string>>({});
     const [gridRows, setGridRows] = useState(8);
     const [draggingWidgetId, setDraggingWidgetId] = useState<string | null>(null);
@@ -369,244 +459,247 @@ export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridPr
     }, [refreshTrigger]);
 
     // Legacy single chart fetch (kept for drill-down and manual refresh)
-    const fetchChartData = async (widgetId: string, config: ChartConfigType) => {
-            const isCard = config.type === 'card';
+    const fetchChartData = useCallback(async (widgetId: string, config: ChartConfigType) => {
+        const isCard = config.type === 'card';
 
-            // Handle import mode - aggregate imported data locally
-            if (config.dataSource?.queryMode === 'import' && config.dataSource?.importedData) {
-                const rawData = config.dataSource.importedData as Record<string, unknown>[];
+        // Handle import mode - aggregate imported data locally
+        if (config.dataSource?.queryMode === 'import' && config.dataSource?.importedData) {
+            const rawData = config.dataSource.importedData as Record<string, unknown>[];
+            const xAxis = config.dataSource.xAxis;
+            const yAxis = config.dataSource.yAxis || [];
+            const groupByFields = config.dataSource.groupBy;
+            const orderByField = config.dataSource.orderBy;
+            const orderDir = config.dataSource.orderDirection || 'asc';
+            const limitNum = config.dataSource.limit || 0;
+
+            // Aggregate data if xAxis and yAxis are provided
+            let processedData = rawData;
+            if (xAxis && yAxis.length > 0) {
+                // Build group key from xAxis + groupBy
+                const groupByArr = Array.isArray(groupByFields) ? groupByFields : groupByFields ? [groupByFields] : [];
+                const groupFields = [xAxis, ...groupByArr];
+
+                const groups: Record<string, Record<string, unknown>> = {};
+                rawData.forEach(row => {
+                    const key = groupFields.map(f => String(row[f] || '')).join('|||');
+                    if (!groups[key]) {
+                        groups[key] = {};
+                        groupFields.forEach(f => { groups[key][f] = row[f]; });
+                        yAxis.forEach(y => { groups[key][y] = 0; });
+                        groups[key]._count = 0;
+                        // Create composite label if groupBy exists
+                        if (groupByArr.length > 0) {
+                            const labelParts = [String(row[xAxis] || ''), ...groupByArr.map(g => String(row[g] || ''))];
+                            groups[key]._compositeLabel = labelParts.join(' - ');
+                        }
+                    }
+                    (groups[key]._count as number)++;
+                    yAxis.forEach(y => {
+                        const val = Number(row[y]) || 0;
+                        (groups[key][y] as number) += val;
+                    });
+                });
+                processedData = Object.values(groups);
+
+                // If groupBy exists, override xAxis value with composite label
+                if (groupByArr.length > 0) {
+                    processedData = processedData.map(row => ({
+                        ...row,
+                        [xAxis as string]: row._compositeLabel || row[xAxis as string],
+                    }));
+                }
+            }
+
+            // Apply sorting
+            if (orderByField) {
+                processedData = [...processedData].sort((a, b) => {
+                    const aVal = a[orderByField];
+                    const bVal = b[orderByField];
+                    if (typeof aVal === 'number' && typeof bVal === 'number') {
+                        return orderDir === 'asc' ? aVal - bVal : bVal - aVal;
+                    }
+                    return orderDir === 'asc'
+                        ? String(aVal || '').localeCompare(String(bVal || ''))
+                        : String(bVal || '').localeCompare(String(aVal || ''));
+                });
+            }
+
+            // Apply limit
+            if (limitNum > 0) {
+                processedData = processedData.slice(0, limitNum);
+            }
+
+            setChartDataCache(prev => ({
+                ...prev,
+                [widgetId]: processedData,
+            }));
+            return;
+        }
+
+        if (!config.dataSource?.table || (!isCard && !config.dataSource?.xAxis) || !config.dataSource?.yAxis?.length) {
+            return;
+        }
+
+        try {
+            // Start with saved filters from chart config
+            const savedFilters = [...(config.dataSource.filters || [])];
+
+            // Apply global filters ONLY if chart has date columns configured
+            const startCol = config.dataSource.startDateColumn;
+            const endCol = config.dataSource.endDateColumn;
+
+            if (startCol && globalFilters.dateRange?.from) {
+                const fromDate = globalFilters.dateRange.from instanceof Date
+                    ? globalFilters.dateRange.from.toISOString().split('T')[0]
+                    : globalFilters.dateRange.from;
+                savedFilters.push({
+                    field: startCol,
+                    operator: '>=' as const,
+                    value: fromDate
+                });
+            }
+
+            if (endCol && globalFilters.dateRange?.to) {
+                const toDate = globalFilters.dateRange.to instanceof Date
+                    ? globalFilters.dateRange.to.toISOString().split('T')[0]
+                    : globalFilters.dateRange.to;
+                savedFilters.push({
+                    field: endCol,
+                    operator: '<=' as const,
+                    value: toDate
+                });
+            }
+
+            const { queryMode, customQuery, connectionId } = config.dataSource;
+
+            // Build request payload using shared utility
+            const requestBody = buildChartDataRequest(config.dataSource, globalFilters);
+            
+            // Override xAxis for card type and add custom query if needed
+            if (isCard) {
+                requestBody.xAxis = undefined;
+            }
+            if (queryMode === 'custom' && customQuery) {
+                requestBody.customQuery = customQuery;
+            }
+
+            const response = await fetch("/api/database/chart-data", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(requestBody),
+            });
+
+            const result = await response.json();
+            if (result.success && result.data) {
+                let chartData = result.data as Record<string, unknown>[];
+
                 const xAxis = config.dataSource.xAxis;
-                const yAxis = config.dataSource.yAxis || [];
                 const groupByFields = config.dataSource.groupBy;
-                const orderByField = config.dataSource.orderBy;
-                const orderDir = config.dataSource.orderDirection || 'asc';
-                const limitNum = config.dataSource.limit || 0;
+                const groupByArr = Array.isArray(groupByFields) ? groupByFields : groupByFields ? [groupByFields] : [];
+                const aggregation = config.dataSource.aggregation || "sum";
 
-                // Aggregate data if xAxis and yAxis are provided
-                let processedData = rawData;
-                if (xAxis && yAxis.length > 0) {
-                    // Build group key from xAxis + groupBy
-                    const groupByArr = Array.isArray(groupByFields) ? groupByFields : groupByFields ? [groupByFields] : [];
-                    const groupFields = [xAxis, ...groupByArr];
+                // Nếu là custom SQL: group lại theo giao diện (Cột X + groupBy) để đảm bảo giống thiết kế
+                if (queryMode === 'custom' && xAxis && config.dataSource.yAxis?.length) {
+                    const yFields = config.dataSource.yAxis;
+                    const groups: Record<string, any> = {};
 
-                    const groups: Record<string, Record<string, unknown>> = {};
-                    rawData.forEach(row => {
-                        const key = groupFields.map(f => String(row[f] || '')).join('|||');
+                    chartData.forEach(row => {
+                        const keyFields = [xAxis, ...groupByArr];
+                        const key = keyFields.map(f => String(row[f] ?? "")).join("|||");
                         if (!groups[key]) {
-                            groups[key] = {};
-                            groupFields.forEach(f => { groups[key][f] = row[f]; });
-                            yAxis.forEach(y => { groups[key][y] = 0; });
-                            groups[key]._count = 0;
-                            // Create composite label if groupBy exists
+                            groups[key] = { _count: 0 } as any;
+                            keyFields.forEach(f => { groups[key][f] = row[f]; });
+                            yFields.forEach(y => {
+                                groups[key][y] =
+                                    aggregation === "min"
+                                        ? Infinity
+                                        : aggregation === "max"
+                                            ? -Infinity
+                                            : 0;
+                            });
+                            // Composite label cho xAxis
                             if (groupByArr.length > 0) {
-                                const labelParts = [String(row[xAxis] || ''), ...groupByArr.map(g => String(row[g] || ''))];
-                                groups[key]._compositeLabel = labelParts.join(' - ');
+                                const labelParts = keyFields.map(f => String(row[f] ?? ""));
+                                groups[key]._compositeLabel = labelParts.join(" - ");
                             }
                         }
-                        (groups[key]._count as number)++;
-                        yAxis.forEach(y => {
+                        groups[key]._count++;
+                        yFields.forEach(y => {
                             const val = Number(row[y]) || 0;
-                            (groups[key][y] as number) += val;
+                            if (aggregation === "sum" || aggregation === "avg") {
+                                groups[key][y] += val;
+                            } else if (aggregation === "min") {
+                                groups[key][y] = Math.min(groups[key][y], val);
+                            } else if (aggregation === "max") {
+                                groups[key][y] = Math.max(groups[key][y], val);
+                            }
                         });
-                    });
-                    processedData = Object.values(groups);
 
-                    // If groupBy exists, override xAxis value with composite label
-                    if (groupByArr.length > 0) {
-                        processedData = processedData.map(row => ({
-                            ...row,
-                            [xAxis as string]: row._compositeLabel || row[xAxis as string],
-                        }));
-                    }
-                }
-
-                // Apply sorting
-                if (orderByField) {
-                    processedData = [...processedData].sort((a, b) => {
-                        const aVal = a[orderByField];
-                        const bVal = b[orderByField];
-                        if (typeof aVal === 'number' && typeof bVal === 'number') {
-                            return orderDir === 'asc' ? aVal - bVal : bVal - aVal;
+                        // DashboardGrid Inline Aggregation: Handle drillDownLabelField (MAX)
+                        const drillLabelField = config.dataSource.drillDownLabelField;
+                        if (drillLabelField && row[drillLabelField]) {
+                            const currentLabel = String(groups[key][drillLabelField] || '');
+                            const newLabel = String(row[drillLabelField]);
+                            if (newLabel.localeCompare(currentLabel) > 0) {
+                                groups[key][drillLabelField] = newLabel;
+                            }
                         }
-                        return orderDir === 'asc'
-                            ? String(aVal || '').localeCompare(String(bVal || ''))
-                            : String(bVal || '').localeCompare(String(aVal || ''));
                     });
-                }
 
-                // Apply limit
-                if (limitNum > 0) {
-                    processedData = processedData.slice(0, limitNum);
+                    chartData = Object.values(groups).map((g: any) => {
+                        const row: any = { ...g };
+                        // avg / count
+                        if (aggregation === "avg") {
+                            config.dataSource.yAxis.forEach(y => {
+                                row[y] = row[y] / g._count;
+                            });
+                        } else if (aggregation === "count") {
+                            config.dataSource.yAxis.forEach(y => {
+                                row[y] = g._count;
+                            });
+                        }
+                        delete row._count;
+
+                        // Store original value for drill-down
+                        if (xAxis) {
+                            row._drillValue = row[xAxis];
+                        }
+
+                        if (row._compositeLabel && xAxis) {
+                            row[xAxis] = row._compositeLabel;
+                            delete row._compositeLabel;
+                        }
+                        return row;
+                    });
+                } else if (xAxis && groupByArr.length > 0) {
+                    // Simple mode: chỉ join label hiển thị
+                    chartData = chartData.map((row) => {
+                        const labelParts = [String(row[xAxis] || ''), ...groupByArr.map(g => String(row[g] || ''))];
+                        return {
+                            ...row,
+                            _drillValue: row[xAxis], // Store original value
+                            [xAxis]: labelParts.join(' - '),
+                        };
+                    });
                 }
 
                 setChartDataCache(prev => ({
                     ...prev,
-                    [widgetId]: processedData,
+                    [widgetId]: chartData,
                 }));
-                return;
             }
-
-            if (!config.dataSource?.table || (!isCard && !config.dataSource?.xAxis) || !config.dataSource?.yAxis?.length) {
-                return;
+        } catch (error) {
+            // Log error (sanitized - no sensitive data)
+            if (error instanceof Error) {
+                console.error("Error fetching chart data:", error.message);
+            } else {
+                console.error("Error fetching chart data:", String(error));
             }
+        }
+    }, [globalFilters, charts]);
 
-            try {
-                // Start with saved filters from chart config
-                const savedFilters = [...(config.dataSource.filters || [])];
-
-                // Apply global filters ONLY if chart has date columns configured
-                const startCol = config.dataSource.startDateColumn;
-                const endCol = config.dataSource.endDateColumn;
-
-                if (startCol && globalFilters.dateRange?.from) {
-                    const fromDate = globalFilters.dateRange.from instanceof Date
-                        ? globalFilters.dateRange.from.toISOString().split('T')[0]
-                        : globalFilters.dateRange.from;
-                    savedFilters.push({
-                        field: startCol,
-                        operator: '>=' as const,
-                        value: fromDate
-                    });
-                }
-
-                if (endCol && globalFilters.dateRange?.to) {
-                    const toDate = globalFilters.dateRange.to instanceof Date
-                        ? globalFilters.dateRange.to.toISOString().split('T')[0]
-                        : globalFilters.dateRange.to;
-                    savedFilters.push({
-                        field: endCol,
-                        operator: '<=' as const,
-                        value: toDate
-                    });
-                }
-
-                const { queryMode, customQuery, connectionId } = config.dataSource;
-
-                // Build request payload using shared utility
-                const requestBody = buildChartDataRequest(config.dataSource, globalFilters);
-                
-                // Override xAxis for card type and add custom query if needed
-                if (isCard) {
-                    requestBody.xAxis = undefined;
-                }
-                if (queryMode === 'custom' && customQuery) {
-                    requestBody.customQuery = customQuery;
-                }
-
-                const response = await fetch("/api/database/chart-data", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(requestBody),
-                });
-
-                const result = await response.json();
-                if (result.success && result.data) {
-                    let chartData = result.data as Record<string, unknown>[];
-
-                    const xAxis = config.dataSource.xAxis;
-                    const groupByFields = config.dataSource.groupBy;
-                    const groupByArr = Array.isArray(groupByFields) ? groupByFields : groupByFields ? [groupByFields] : [];
-                    const aggregation = config.dataSource.aggregation || "sum";
-
-                    // Nếu là custom SQL: group lại theo giao diện (Cột X + groupBy) để đảm bảo giống thiết kế
-                    if (queryMode === 'custom' && xAxis && config.dataSource.yAxis?.length) {
-                        const yFields = config.dataSource.yAxis;
-                        const groups: Record<string, any> = {};
-
-                        chartData.forEach(row => {
-                            const keyFields = [xAxis, ...groupByArr];
-                            const key = keyFields.map(f => String(row[f] ?? "")).join("|||");
-                            if (!groups[key]) {
-                                groups[key] = { _count: 0 } as any;
-                                keyFields.forEach(f => { groups[key][f] = row[f]; });
-                                yFields.forEach(y => {
-                                    groups[key][y] =
-                                        aggregation === "min"
-                                            ? Infinity
-                                            : aggregation === "max"
-                                                ? -Infinity
-                                                : 0;
-                                });
-                                // Composite label cho xAxis
-                                if (groupByArr.length > 0) {
-                                    const labelParts = keyFields.map(f => String(row[f] ?? ""));
-                                    groups[key]._compositeLabel = labelParts.join(" - ");
-                                }
-                            }
-                            groups[key]._count++;
-                            yFields.forEach(y => {
-                                const val = Number(row[y]) || 0;
-                                if (aggregation === "sum" || aggregation === "avg") {
-                                    groups[key][y] += val;
-                                } else if (aggregation === "min") {
-                                    groups[key][y] = Math.min(groups[key][y], val);
-                                } else if (aggregation === "max") {
-                                    groups[key][y] = Math.max(groups[key][y], val);
-                                }
-                            });
-
-                            // DashboardGrid Inline Aggregation: Handle drillDownLabelField (MAX)
-                            const drillLabelField = config.dataSource.drillDownLabelField;
-                            if (drillLabelField && row[drillLabelField]) {
-                                const currentLabel = String(groups[key][drillLabelField] || '');
-                                const newLabel = String(row[drillLabelField]);
-                                if (newLabel.localeCompare(currentLabel) > 0) {
-                                    groups[key][drillLabelField] = newLabel;
-                                }
-                            }
-                        });
-
-                        chartData = Object.values(groups).map((g: any) => {
-                            const row: any = { ...g };
-                            // avg / count
-                            if (aggregation === "avg") {
-                                config.dataSource.yAxis.forEach(y => {
-                                    row[y] = row[y] / g._count;
-                                });
-                            } else if (aggregation === "count") {
-                                config.dataSource.yAxis.forEach(y => {
-                                    row[y] = g._count;
-                                });
-                            }
-                            delete row._count;
-
-                            // Store original value for drill-down
-                            if (xAxis) {
-                                row._drillValue = row[xAxis];
-                            }
-
-                            if (row._compositeLabel && xAxis) {
-                                row[xAxis] = row._compositeLabel;
-                                delete row._compositeLabel;
-                            }
-                            return row;
-                        });
-                    } else if (xAxis && groupByArr.length > 0) {
-                        // Simple mode: chỉ join label hiển thị
-                        chartData = chartData.map((row) => {
-                            const labelParts = [String(row[xAxis] || ''), ...groupByArr.map(g => String(row[g] || ''))];
-                            return {
-                                ...row,
-                                _drillValue: row[xAxis], // Store original value
-                                [xAxis]: labelParts.join(' - '),
-                            };
-                        });
-                    }
-
-                    setChartDataCache(prev => ({
-                        ...prev,
-                        [widgetId]: chartData,
-                    }));
-                }
-            } catch (error) {
-                // Log error (sanitized - no sensitive data)
-                if (error instanceof Error) {
-                    console.error("Error fetching chart data:", error.message);
-                } else {
-                    console.error("Error fetching chart data:", String(error));
-                }
-            }
-        };
+    useEffect(() => {
+        if (!currentDashboard) return;
 
         currentDashboard.widgets.forEach(widget => {
             if (widget.type === "chart") {
@@ -621,7 +714,7 @@ export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridPr
                 fetchChartData(widget.id, config);
             }
         });
-    }, [currentDashboard, globalFilters, charts]); // Add charts dependency
+    }, [currentDashboard, fetchChartData]); // Add charts dependency
 
     // Fetch drill-down data: WHERE filter, NO GROUP BY - show raw records
     const fetchDrillDownData = useCallback(async (
@@ -1704,39 +1797,7 @@ export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridPr
                                             </div>
 
                                             {/* Delete Button */}
-                                            {/* Delete Button with Confirmation */}
-                                            <Popover>
-                                                <PopoverTrigger asChild>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-5 w-5 text-white hover:bg-red-500"
-                                                        onMouseDown={(e) => e.stopPropagation()}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        title="Xóa"
-                                                    >
-                                                        <X className="h-3 w-3" />
-                                                    </Button>
-                                                </PopoverTrigger>
-                                                <PopoverContent className="w-60 p-3" align="end" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
-                                                    <div className="space-y-2">
-                                                        <h4 className="font-medium text-sm text-slate-900">Xóa Widget?</h4>
-                                                        <div className="flex justify-end gap-2">
-                                                            <Button
-                                                                variant="destructive"
-                                                                size="sm"
-                                                                className="h-7 text-xs"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    removeWidget(widget.id);
-                                                                }}
-                                                            >
-                                                                Xóa
-                                                            </Button>
-                                                        </div>
-                                                    </div>
-                                                </PopoverContent>
-                                            </Popover>
+                                            <DeleteWidgetButton widgetId={widget.id} />
                                         </div>
                                     </div>
                                 )}
