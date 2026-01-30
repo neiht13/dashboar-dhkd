@@ -523,25 +523,25 @@ export default function UltimateDashboard() {
             </div>
 
             {/* RIGHT: UNIT DETAIL (RADAR) */}
-            <div className="bg-slate-800 text-white p-5 shadow-lg border-t-4 border-blue-500 flex flex-col">
+            <div className="bg-white p-5 shadow-lg border-t-4 border-blue-500 flex flex-col border border-slate-200">
               {selectedUnit ? (
                 <>
                   <div className="flex justify-between items-start mb-2">
                     <div>
-                      <h2 className="font-bold text-lg">{selectedUnit.name}</h2>
-                      <span className="text-xs bg-slate-700 px-2 py-0.5 rounded text-slate-300 font-mono">{selectedUnit.code}</span>
+                      <h2 className="font-bold text-lg text-slate-800">{selectedUnit.name}</h2>
+                      <span className="text-xs bg-slate-100 px-2 py-0.5 rounded text-slate-500 font-mono border border-slate-200">{selectedUnit.code}</span>
                     </div>
                     <div className="text-right">
-                      <div className="text-3xl font-black text-blue-400">{selectedUnit.totalAct}</div>
-                      <div className="text-[10px] uppercase opacity-70">Tổng PTM</div>
+                      <div className="text-3xl font-black text-blue-600">{selectedUnit.totalAct}</div>
+                      <div className="text-[10px] uppercase text-slate-500">Tổng PTM</div>
                     </div>
                   </div>
 
                   <div className="flex-1 min-h-[250px] relative">
                     <ResponsiveContainer width="100%" height="100%">
                       <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
-                        <PolarGrid stroke="#475569" />
-                        <PolarAngleAxis dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 'bold' }} />
+                        <PolarGrid stroke="#e2e8f0" />
+                        <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 10, fontWeight: 'bold' }} />
                         <PolarRadiusAxis angle={30} domain={[0, 150]} tick={false} axisLine={false} />
                         <Radar
                           name={selectedUnit.name}
@@ -549,7 +549,7 @@ export default function UltimateDashboard() {
                           stroke="#3b82f6"
                           strokeWidth={2}
                           fill="#3b82f6"
-                          fillOpacity={0.5}
+                          fillOpacity={0.6}
                         />
                         <Radar
                           name="TB Tỉnh"
@@ -557,16 +557,16 @@ export default function UltimateDashboard() {
                           stroke="#94a3b8"
                           strokeWidth={1}
                           strokeDasharray="4 4"
-                          fill="transparent"
+                          fill="#94a3b8"
                           fillOpacity={0.1}
                         />
-                        <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', color: '#fff' }} itemStyle={{ color: '#fff' }} />
+                        <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', color: '#1e293b', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} itemStyle={{ color: '#1e293b' }} />
                       </RadarChart>
                     </ResponsiveContainer>
                   </div>
 
                   {/* Service Mix Donut */}
-                  <div className="h-32 mt-4 border-t border-slate-700 pt-3 flex items-center">
+                  <div className="h-32 mt-4 border-t border-slate-100 pt-3 flex items-center">
                     <div className="w-1/2 h-full">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
@@ -581,7 +581,7 @@ export default function UltimateDashboard() {
                               <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
                             ))}
                           </Pie>
-                          <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', fontSize: '10px' }} />
+                          <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', fontSize: '10px', color: '#1e293b' }} itemStyle={{ color: '#1e293b' }} />
                         </PieChart>
                       </ResponsiveContainer>
                     </div>

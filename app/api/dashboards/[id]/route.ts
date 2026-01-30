@@ -21,16 +21,16 @@ export async function GET(request: Request, { params }: RouteParams) {
             );
         }
 
-        if (!mongoose.Types.ObjectId.isValid(id)) {
-            return NextResponse.json(
-                { success: false, error: 'Invalid dashboard ID' },
-                { status: 400 }
-            );
+        let query: any = {};
+        if (mongoose.Types.ObjectId.isValid(id)) {
+            query = { _id: id };
+        } else {
+            query = { slug: id };
         }
 
         await connectDB();
 
-        const dashboard = await Dashboard.findById(id).lean();
+        const dashboard = await Dashboard.findOne(query).lean();
 
         if (!dashboard) {
             return NextResponse.json(
@@ -40,13 +40,19 @@ export async function GET(request: Request, { params }: RouteParams) {
         }
 
         // Check access permission
+        const { searchParams } = new URL(request.url);
+        const token = searchParams.get('token');
+
         const isOwner = dashboard.ownerId.toString() === user._id.toString();
         const isShared = dashboard.sharedWith?.some(
             (share) => share.userId.toString() === user._id.toString()
         );
         const isAdmin = user.role === 'admin';
 
-        if (!isOwner && !isShared && !isAdmin) {
+        // Check public token
+        const isTokenValid = token && dashboard.publicToken === token;
+
+        if (!isOwner && !isShared && !isAdmin && !isTokenValid) {
             return NextResponse.json(
                 { success: false, error: 'Access denied' },
                 { status: 403 }
@@ -79,16 +85,16 @@ export async function PUT(request: Request, { params }: RouteParams) {
             );
         }
 
-        if (!mongoose.Types.ObjectId.isValid(id)) {
-            return NextResponse.json(
-                { success: false, error: 'Invalid dashboard ID' },
-                { status: 400 }
-            );
+        let query: any = {};
+        if (mongoose.Types.ObjectId.isValid(id)) {
+            query = { _id: id };
+        } else {
+            query = { slug: id };
         }
 
         await connectDB();
 
-        const dashboard = await Dashboard.findById(id);
+        const dashboard = await Dashboard.findOne(query);
 
         if (!dashboard) {
             return NextResponse.json(
@@ -157,16 +163,16 @@ export async function DELETE(request: Request, { params }: RouteParams) {
             );
         }
 
-        if (!mongoose.Types.ObjectId.isValid(id)) {
-            return NextResponse.json(
-                { success: false, error: 'Invalid dashboard ID' },
-                { status: 400 }
-            );
+        let query: any = {};
+        if (mongoose.Types.ObjectId.isValid(id)) {
+            query = { _id: id };
+        } else {
+            query = { slug: id };
         }
 
         await connectDB();
 
-        const dashboard = await Dashboard.findById(id);
+        const dashboard = await Dashboard.findOne(query);
 
         if (!dashboard) {
             return NextResponse.json(
@@ -186,7 +192,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
             );
         }
 
-        await Dashboard.findByIdAndDelete(id);
+        await Dashboard.deleteOne(query);
 
         return NextResponse.json({
             success: true,

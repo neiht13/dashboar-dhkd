@@ -15,6 +15,12 @@ const UltimateDashboard = dynamic(
     }
 );
 
+import { RouteGuard } from "@/components/security/RouteGuard";
+
 export default function PTMDashboardPage() {
-    return <UltimateDashboard />;
+    return (
+        <RouteGuard slug="ptm-dashboard" title="Dashboard PTM">
+            <UltimateDashboard />
+        </RouteGuard>
+    );
 }

@@ -50,6 +50,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/hooks/use-debounce";
+import { toast } from "sonner";
 
 interface SharePermission {
     userId: { _id: string; toString(): string };
@@ -115,6 +116,7 @@ interface PermissionManagerProps {
     dashboardName?: string;
     trigger?: React.ReactNode;
     onPermissionChange?: () => void;
+    resourceType?: "dashboard" | "route";
 }
 
 export function PermissionManager({
@@ -122,6 +124,7 @@ export function PermissionManager({
     dashboardName,
     trigger,
     onPermissionChange,
+    resourceType = "dashboard",
 }: PermissionManagerProps) {
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -135,11 +138,13 @@ export function PermissionManager({
 
     const debouncedSearch = useDebounce(searchQuery, 300);
 
+    const apiBase = resourceType === "route" ? "/api/routes" : "/api/dashboards";
+
     // Fetch permissions when dialog opens
     const fetchPermissions = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await fetch(`/api/dashboards/${dashboardId}/permissions`);
+            const res = await fetch(`${apiBase}/${dashboardId}/permissions`);
             const data = await res.json();
             if (data.success) {
                 setPermissionData(data.data);
@@ -212,9 +217,13 @@ export function PermissionManager({
                 setSearchQuery("");
                 setSearchResults(null);
                 onPermissionChange?.();
+                toast.success("Đã thêm quyền truy cập");
+            } else {
+                toast.error(data.error || "Thêm quyền thất bại");
             }
         } catch (error) {
             console.error("Error adding permission:", error);
+            toast.error("Lỗi kết nối");
         } finally {
             setSaving(false);
         }
@@ -237,9 +246,13 @@ export function PermissionManager({
             if (data.success) {
                 await fetchPermissions();
                 onPermissionChange?.();
+                toast.success("Đã cập nhật quyền");
+            } else {
+                toast.error(data.error || "Cập nhật thất bại");
             }
         } catch (error) {
             console.error("Error updating permission:", error);
+            toast.error("Lỗi kết nối");
         } finally {
             setSaving(false);
         }
@@ -250,16 +263,20 @@ export function PermissionManager({
         setSaving(true);
         try {
             const res = await fetch(
-                `/api/dashboards/${dashboardId}/permissions?type=${type}&targetId=${targetId}`,
+                `${apiBase}/${dashboardId}/permissions?type=${type}&targetId=${targetId}`,
                 { method: "DELETE" }
             );
             const data = await res.json();
             if (data.success) {
                 await fetchPermissions();
                 onPermissionChange?.();
+                toast.success("Đã xóa quyền");
+            } else {
+                toast.error(data.error || "Xóa thất bại");
             }
         } catch (error) {
             console.error("Error removing permission:", error);
+            toast.error("Lỗi kết nối");
         } finally {
             setSaving(false);
         }
@@ -269,7 +286,7 @@ export function PermissionManager({
     const togglePublicAccess = async (isPublic: boolean) => {
         setSaving(true);
         try {
-            const res = await fetch(`/api/dashboards/${dashboardId}/permissions`, {
+            const res = await fetch(`${apiBase}/${dashboardId}/permissions`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ isPublic }),

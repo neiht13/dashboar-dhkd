@@ -41,6 +41,7 @@ export interface IDashboardTab {
 export interface IDashboard extends Document {
     _id: mongoose.Types.ObjectId;
     name: string;
+    slug?: string;
     description?: string;
     widgets: IWidget[];
     layout: IWidget['layout'][];
@@ -138,6 +139,13 @@ const DashboardSchema = new Schema<IDashboard>(
         },
         thumbnail: {
             type: String,
+        },
+        slug: {
+            type: String,
+            unique: true,
+            sparse: true,
+            trim: true,
+            lowercase: true,
         },
         tags: [{
             type: String,

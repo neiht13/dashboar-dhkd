@@ -24,6 +24,8 @@ interface MapChartProps {
     config: ChartConfig;
     width?: number | string;
     height?: number | string;
+    highlightCode?: string; // External highlight control
+    onPolygonClick?: (item: any) => void;
 }
 
 // Filter Panel Component - Left sidebar for map filters
@@ -289,10 +291,24 @@ const MapMarkers = ({ data, config }: { data: any[], config: ChartConfig }) => {
     );
 };
 
-const MapLayers = ({ data, config, setLegendItems, regionType }: { data: any[], config: ChartConfig, setLegendItems: (items: { code: string; name: string; color: string }[]) => void, regionType: RegionType }) => {
+const MapLayers = ({ data, config, setLegendItems, regionType, highlightCode, onPolygonClick }: {
+    data: any[],
+    config: ChartConfig,
+    setLegendItems: (items: { code: string; name: string; color: string }[]) => void,
+    regionType: RegionType,
+    highlightCode?: string,
+    onPolygonClick?: (item: any) => void
+}) => {
     const { map, isLoaded } = useMap();
     const { dataSource } = config;
     const [selectedCode, setSelectedCode] = useState<string | null>(null);
+
+    // Sync internal state with external prop
+    useEffect(() => {
+        if (highlightCode !== undefined) {
+            setSelectedCode(highlightCode);
+        }
+    }, [highlightCode]);
 
     // Get the appropriate GeoJSON and field names based on regionType
     const geoConfig = useMemo(() => {
@@ -510,8 +526,6 @@ const MapLayers = ({ data, config, setLegendItems, regionType }: { data: any[], 
             });
 
             map.on('mousemove', fillLayerId, (e) => {
-                map.getCanvas().style.cursor = 'pointer';
-
                 const feature = e.features?.[0];
                 if (feature) {
                     const name = feature.properties?.[nameField] || feature.properties?.[codeField];
@@ -567,7 +581,6 @@ const MapLayers = ({ data, config, setLegendItems, regionType }: { data: any[], 
             });
 
             map.on('mouseleave', fillLayerId, () => {
-                map.getCanvas().style.cursor = '';
                 popup.remove();
             });
         }
@@ -680,147 +693,100 @@ const MapLayers = ({ data, config, setLegendItems, regionType }: { data: any[], 
 
     }, [map, isLoaded, dataSource, data, config.style?.mapColorScheme, config.style?.mapDisplayMode, setLegendItems, geoConfig, regionType]);
 
-    // Add highlight layer and click handler
+    // 1. HIGHLIGHT LAYER RENDER EFFECT
+    // Updates the highlight layer visualization when selectedCode changes
+    useEffect(() => {
+        if (!map || !isLoaded || !map.getSource(geoConfig.sourceId)) return;
+
+        const { codeField, sourceId, highlightFillId, highlight3dId, symbolLayerId } = geoConfig;
+
+        // Ensure highlight layers exist
+        if (!map.getLayer(highlightFillId)) {
+            // Add highlight fill layer
+            if (map.getLayer(symbolLayerId)) {
+                map.addLayer({
+                    id: highlightFillId,
+                    type: 'fill',
+                    source: sourceId,
+                    paint: {
+                        'fill-color': '#dc2626', // Red color
+                        'fill-opacity': 0.7,
+                        'fill-outline-color': '#b91c1c'
+                    },
+                    filter: ['==', ['get', codeField], selectedCode || '']
+                }, symbolLayerId); // Insert BEFORE symbol layer
+            }
+        }
+
+        if (!map.getLayer(highlight3dId)) {
+            if (map.getLayer(symbolLayerId)) {
+                // Add 3D extrusion effect
+                map.addLayer({
+                    id: highlight3dId,
+                    type: 'line',
+                    source: sourceId,
+                    paint: {
+                        'line-color': '#b91c1c',
+                        'line-width': 3,
+                        'line-opacity': 0.8
+                    },
+                    filter: ['==', ['get', codeField], selectedCode || '']
+                }, symbolLayerId);
+            }
+        }
+
+        // Update filters if layers exist
+        if (map.getLayer(highlightFillId)) {
+            map.setFilter(highlightFillId, ['==', ['get', codeField], selectedCode || '']);
+        }
+        if (map.getLayer(highlight3dId)) {
+            map.setFilter(highlight3dId, ['==', ['get', codeField], selectedCode || '']);
+        }
+
+    }, [map, isLoaded, geoConfig, selectedCode]);
+
+    // 2. INTERACTION HANDLER EFFECT
+    // Handles clicks and updates internal/external state
     useEffect(() => {
         if (!map || !isLoaded) return;
 
-        const { codeField, nameField, sourceId, fillLayerId, highlightFillId, highlight3dId } = geoConfig;
+        const { codeField, fillLayerId } = geoConfig;
 
-        // Click handler - highlight all polygons with same code
+        // Click handler
         const handleClick = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
             const feature = e.features?.[0];
             const clickedCode = feature?.properties?.[codeField];
 
             if (clickedCode) {
-                // Update selected code for highlight
+                // 1. Update internal state (triggers highlight effect)
                 setSelectedCode(clickedCode);
 
-                // Update fill color for highlight effect
-                // Get the symbol layer ID to insert highlight layers BEFORE it (so labels stay on top)
-                const { symbolLayerId } = geoConfig;
+                // 2. Find data item
+                const xAxisKey = config.dataSource?.xAxis; // Access config directly
+                const item = xAxisKey ? data.find(d => String(d[xAxisKey]).trim().toLowerCase() === String(clickedCode).trim().toLowerCase()) : null;
 
-                if (!map.getLayer(highlightFillId)) {
-                    // Add highlight fill layer BEFORE the symbol layer so labels are not covered
-                    map.addLayer({
-                        id: highlightFillId,
-                        type: 'fill',
-                        source: sourceId,
-                        paint: {
-                            'fill-color': 'tomato',
-                            'fill-opacity': 0.7,
-                            'fill-outline-color': '#ff6347'
-                        },
-                        filter: ['==', ['get', codeField], clickedCode]
-                    }, symbolLayerId); // Insert BEFORE symbol layer
-
-                    // Add 3D extrusion effect (simulated with line width) - also before symbol layer
-                    map.addLayer({
-                        id: highlight3dId,
-                        type: 'line',
-                        source: sourceId,
-                        paint: {
-                            'line-color': '#ff6347',
-                            'line-width': 3,
-                            'line-opacity': 0.8
-                        },
-                        filter: ['==', ['get', codeField], clickedCode]
-                    }, symbolLayerId); // Insert BEFORE symbol layer
-                } else {
-                    // Update existing highlight layers
-                    map.setFilter(highlightFillId, ['==', ['get', codeField], clickedCode]);
-                    map.setFilter(highlight3dId, ['==', ['get', codeField], clickedCode]);
-                }
-
-                // Add click popup
-                const name = feature?.properties?.[nameField] || feature?.properties?.[codeField];
-                const groupValue = geoConfig.groupField ? feature?.properties?.[geoConfig.groupField] : null;
-                const xAxisKey = dataSource?.xAxis;
-                const yAxisFields = dataSource?.yAxis || [];
-                let valueDisplay = '';
-                let totalValue = 0;
-
-                // Show group (TTVT) if available (for Phường/Xã)
-                if (groupValue) {
-                    valueDisplay = `<div style="font-size: 11px; color: #64748b; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px dashed #e2e8f0; display: flex; align-items: center; gap: 4px;"><svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg> Thuộc khu vực: <strong style="color: #0f172a;">${groupValue}</strong></div>`;
-                }
-
-                if (xAxisKey && yAxisFields.length > 0) {
-                    const item = data.find(d => String(d[xAxisKey]).trim().toLowerCase() === String(clickedCode).trim().toLowerCase());
-                    if (item) {
-                        // Calculate total for selected layers
-                        yAxisFields.forEach(field => {
-                            totalValue += Number(item[field] || 0);
-                        });
-
-                        // Show total first
-                        valueDisplay += `<div style="margin-top:4px; font-size: 13px; font-weight: 700; color: tomato; border-bottom: 2px dashed #fecaca; padding-bottom: 6px; margin-bottom: 6px;">
-                            Tổng cộng: ${totalValue.toLocaleString()}
-                        </div>`;
-
-                        // Show detailed breakdown of each selected service type
-                        valueDisplay += yAxisFields.map(field => {
-                            const value = Number(item[field] || 0);
-                            const fieldName = config.style?.yAxisFieldLabels?.[field] || field;
-                            const percent = totalValue > 0 ? ((value / totalValue) * 100).toFixed(1) : '0';
-                            return `<div style="margin-top:4px; font-size: 11px; display: flex; justify-content: space-between; align-items: center;">
-                                <span>${fieldName}:</span>
-                                <span style="font-weight:600; color: tomato;">${value.toLocaleString()} <span style="color: #94a3b8; font-size: 10px;">(${percent}%)</span></span>
-                            </div>`;
-                        }).join('');
-                    }
-                }
-
-                // Show click popup for both region types with appropriate styling
-                if (regionType === 'ttvt') {
-                    // For TTVT: Show styled popup similar to marker popup (trụ sở style)
-                    const clickPopup = new maplibregl.Popup({
-                        closeButton: true,
-                        closeOnClick: true,
-                        maxWidth: '280px'
-                    })
-                        .setLngLat(e.lngLat)
-                        .setHTML(`<div style="background: white; border-radius: 8px; overflow: hidden; min-width: 240px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);">
-                            <div style="background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%); padding: 16px; display: flex; align-items: center; justify-content: center;">
-                                <svg style="width: 40px; height: 40px; color: #94a3b8;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
-                            </div>
-                            <div style="padding: 12px;">
-                                <div style="font-size: 10px; font-weight: 500; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Đơn vị</div>
-                                <div style="font-size: 14px; font-weight: 600; color: #0f172a; margin-top: 2px;">${name}</div>
-                                ${valueDisplay ? `<div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #e2e8f0;">${valueDisplay}</div>` : ''}
-                                <div style="display: flex; gap: 8px; margin-top: 12px;">
-                                    <div style="flex: 1; background: #3b82f6; color: white; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; text-align: center; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;">
-                                        <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg> Chỉ đường
-                                    </div>
-                                    <div style="background: #f1f5f9; border: 1px solid #e2e8f0; padding: 8px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center;">
-                                        <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>`)
-                        .addTo(map);
-                } else {
-                    // For phuong_xa: Show highlight style popup
-                    const clickPopup = new maplibregl.Popup()
-                        .setLngLat(e.lngLat)
-                        .setHTML(`<div style="background: rgba(255, 255, 255, 0.98); backdrop-filter: blur(10px); border: 2px solid tomato; border-radius: 8px; padding: 12px; color: #0f172a; min-width: 200px; box-shadow: 0 6px 20px rgba(255, 99, 71, 0.3);">
-                                 <div style="font-weight: bold; font-size: 14px; border-bottom: 2px solid tomato; padding-bottom: 4px; margin-bottom: 4px; color: tomato;">${name}</div>
-                                 ${valueDisplay}
-                                 <div style="margin-top: 8px; font-size: 10px; color: #94a3b8; text-align: center;">Đã chọn khu vực này</div>
-                             </div>`)
-                        .addTo(map);
-
-                    // Remove popup after 3 seconds
-                    setTimeout(() => clickPopup.remove(), 3000);
+                // 3. Notify parent
+                if (onPolygonClick && item) {
+                    onPolygonClick(item);
                 }
             }
         };
 
         map.on('click', fillLayerId, handleClick);
 
+        // Change cursor on hover
+        const handleMouseEnter = () => map.getCanvas().style.cursor = 'pointer';
+        const handleMouseLeave = () => map.getCanvas().style.cursor = '';
+
+        map.on('mouseenter', fillLayerId, handleMouseEnter);
+        map.on('mouseleave', fillLayerId, handleMouseLeave);
+
         return () => {
             map.off('click', fillLayerId, handleClick);
+            map.off('mouseenter', fillLayerId, handleMouseEnter);
+            map.off('mouseleave', fillLayerId, handleMouseLeave);
         };
-    }, [map, isLoaded, geoConfig, dataSource, data, config.style?.yAxisFieldLabels, regionType]);
+    }, [map, isLoaded, geoConfig, data, config, onPolygonClick]);
 
     return null;
 };

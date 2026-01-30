@@ -88,6 +88,11 @@ const bottomNavItems: NavItem[] = [
         icon: <Shield className="h-5 w-5" />,
     },
     {
+        title: "Quản lý Route",
+        href: "/settings/routes",
+        icon: <Shield className="h-5 w-5" />,
+    },
+    {
         title: "Cài đặt",
         href: "/settings",
         icon: <Settings className="h-5 w-5" />,

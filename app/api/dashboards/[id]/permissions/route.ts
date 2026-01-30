@@ -21,17 +21,15 @@ export async function GET(request: NextRequest, context: RouteContext) {
         }
 
         const { id } = await context.params;
-        if (!ObjectId.isValid(id)) {
-            return NextResponse.json(
-                { success: false, error: "Invalid dashboard ID" },
-                { status: 400 }
-            );
+        let query: any = {};
+        if (ObjectId.isValid(id)) {
+            query = { _id: new ObjectId(id) };
+        } else {
+            query = { slug: id };
         }
 
         const db = await getDb();
-        const dashboard = await db.collection("dashboards").findOne({
-            _id: new ObjectId(id),
-        });
+        const dashboard = await db.collection("dashboards").findOne(query);
 
         if (!dashboard) {
             return NextResponse.json(
@@ -97,7 +95,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
         return NextResponse.json({
             success: true,
             data: {
-                dashboardId: id,
+                dashboardId: dashboard._id.toString(),
+                dashboardSlug: dashboard.slug,
                 dashboardName: dashboard.name,
                 owner,
                 sharedWithUsers,
@@ -128,13 +127,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }
 
         const { id } = await context.params;
-        if (!ObjectId.isValid(id)) {
-            return NextResponse.json(
-                { success: false, error: "Invalid dashboard ID" },
-                { status: 400 }
-            );
-        }
-
         const body = await request.json();
         const { type, targetId, permission } = body;
 
@@ -167,9 +159,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }
 
         const db = await getDb();
-        const dashboard = await db.collection("dashboards").findOne({
-            _id: new ObjectId(id),
-        });
+
+        let query: any = {};
+        if (ObjectId.isValid(id)) {
+            query = { _id: new ObjectId(id) };
+        } else {
+            query = { slug: id };
+        }
+
+        const dashboard = await db.collection("dashboards").findOne(query);
 
         if (!dashboard) {
             return NextResponse.json(
@@ -212,7 +210,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
             if (existingShare) {
                 // Update existing permission
                 await db.collection("dashboards").updateOne(
-                    { _id: new ObjectId(id), "sharedWith.userId": targetObjectId },
+                    { _id: dashboard._id, "sharedWith.userId": targetObjectId },
                     {
                         $set: {
                             "sharedWith.$.permission": permission,
@@ -223,7 +221,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
             } else {
                 // Add new permission
                 await db.collection("dashboards").updateOne(
-                    { _id: new ObjectId(id) },
+                    { _id: dashboard._id },
                     {
                         $push: {
                             sharedWith: {
@@ -272,7 +270,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
             if (existingShare) {
                 // Update existing permission
                 await db.collection("dashboards").updateOne(
-                    { _id: new ObjectId(id), "sharedWithTeams.teamId": targetObjectId },
+                    { _id: dashboard._id, "sharedWithTeams.teamId": targetObjectId },
                     {
                         $set: {
                             "sharedWithTeams.$.permission": permission,
@@ -283,7 +281,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
             } else {
                 // Add new permission
                 await db.collection("dashboards").updateOne(
-                    { _id: new ObjectId(id) },
+                    { _id: dashboard._id },
                     {
                         $push: {
                             sharedWithTeams: {
@@ -333,13 +331,6 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
         }
 
         const { id } = await context.params;
-        if (!ObjectId.isValid(id)) {
-            return NextResponse.json(
-                { success: false, error: "Invalid dashboard ID" },
-                { status: 400 }
-            );
-        }
-
         const { searchParams } = new URL(request.url);
         const type = searchParams.get("type");
         const targetId = searchParams.get("targetId");
@@ -359,9 +350,15 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
         }
 
         const db = await getDb();
-        const dashboard = await db.collection("dashboards").findOne({
-            _id: new ObjectId(id),
-        });
+
+        let query: any = {};
+        if (ObjectId.isValid(id)) {
+            query = { _id: new ObjectId(id) };
+        } else {
+            query = { slug: id };
+        }
+
+        const dashboard = await db.collection("dashboards").findOne(query);
 
         if (!dashboard) {
             return NextResponse.json(
@@ -384,7 +381,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 
         if (type === "user") {
             await db.collection("dashboards").updateOne(
-                { _id: new ObjectId(id) },
+                { _id: dashboard._id },
                 {
                     $pull: {
                         sharedWith: { userId: targetObjectId },
@@ -393,7 +390,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
             );
         } else if (type === "team") {
             await db.collection("dashboards").updateOne(
-                { _id: new ObjectId(id) },
+                { _id: dashboard._id },
                 {
                     $pull: {
                         sharedWithTeams: { teamId: targetObjectId },
@@ -432,20 +429,19 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         }
 
         const { id } = await context.params;
-        if (!ObjectId.isValid(id)) {
-            return NextResponse.json(
-                { success: false, error: "Invalid dashboard ID" },
-                { status: 400 }
-            );
-        }
-
         const body = await request.json();
         const { isPublic, publicPermission } = body;
 
         const db = await getDb();
-        const dashboard = await db.collection("dashboards").findOne({
-            _id: new ObjectId(id),
-        });
+
+        let query: any = {};
+        if (ObjectId.isValid(id)) {
+            query = { _id: new ObjectId(id) };
+        } else {
+            query = { slug: id };
+        }
+
+        const dashboard = await db.collection("dashboards").findOne(query);
 
         if (!dashboard) {
             return NextResponse.json(
@@ -486,7 +482,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         }
 
         await db.collection("dashboards").updateOne(
-            { _id: new ObjectId(id) },
+            { _id: dashboard._id },
             { $set: updateData }
         );
 

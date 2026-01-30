@@ -17,11 +17,18 @@ export async function GET() {
         await connectDB();
 
         // Get dashboards owned by user or shared with user
+        // Admins can also see all system dashboards (with slugs)
+        const conditions: any[] = [
+            { ownerId: user._id },
+            { 'sharedWith.userId': user._id },
+        ];
+
+        if (user.role === 'admin') {
+            conditions.push({ slug: { $exists: true, $ne: null } });
+        }
+
         const dashboards = await Dashboard.find({
-            $or: [
-                { ownerId: user._id },
-                { 'sharedWith.userId': user._id },
-            ],
+            $or: conditions,
         })
             .sort({ updatedAt: -1 })
             .select('-__v')
@@ -52,7 +59,7 @@ export async function POST(request: Request) {
         }
 
         const body = await request.json();
-        const { name, description, widgets = [], layout = [], tags = [] } = body;
+        const { name, description, widgets = [], layout = [], tags = [], slug } = body;
 
         if (!name) {
             return NextResponse.json(
@@ -63,8 +70,20 @@ export async function POST(request: Request) {
 
         await connectDB();
 
+        // Check if slug exists if provided
+        if (slug) {
+            const existing = await Dashboard.findOne({ slug });
+            if (existing) {
+                return NextResponse.json(
+                    { success: false, error: 'Dashboard with this slug already exists' },
+                    { status: 400 }
+                );
+            }
+        }
+
         const dashboard = await Dashboard.create({
             name,
+            slug,
             description,
             widgets,
             layout,

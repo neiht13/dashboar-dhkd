@@ -54,6 +54,19 @@ export default function DashboardLayout({
         );
     }
 
+    // Standalone pages that don't need sidebar/header
+    const isStandalonePage = pathname?.startsWith('/net-add') || pathname?.startsWith('/ptm-dashboard');
+
+    if (isStandalonePage) {
+        return (
+            <div className="min-h-screen bg-[#F8FAFC] dark:bg-gray-950">
+                <ErrorBoundary>
+                    {children}
+                </ErrorBoundary>
+            </div>
+        )
+    }
+
     return (
         <div className="min-h-screen flex bg-[#F8FAFC] dark:bg-gray-950">
             {/* Mobile sidebar overlay */}
