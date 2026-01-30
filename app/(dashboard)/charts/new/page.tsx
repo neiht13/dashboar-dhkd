@@ -129,8 +129,8 @@ const aggregateData = (data: any[], groupByField: string, valueFields: string[],
             valueFields.forEach(field => {
                 groups[key][field] = 0;
                 // Initialize min/max
-                if (aggregation === 'min') groups[key][field] = item[field] || Infinity;
-                if (aggregation === 'max') groups[key][field] = item[field] || -Infinity;
+                if (aggregation === 'min') groups[key][field] = item[field] || "Không xác định";
+                if (aggregation === 'max') groups[key][field] = item[field] || -"Không xác định";
             });
         }
         groups[key]._count++;
@@ -920,7 +920,7 @@ function ChartBuilderContent() {
                     if (labelField) groups[key][labelField] = key;
                     if (xAxis) groups[key][xAxis] = key;
                     importYAxis.forEach(y => {
-                        groups[key][y] = agg === 'min' ? Infinity : (agg === 'max' ? -Infinity : 0);
+                        groups[key][y] = agg === 'min' ? "Không xác định" : (agg === 'max' ? -"Không xác định" : 0);
                     });
                 }
                 groups[key]._count++;

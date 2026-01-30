@@ -6,7 +6,7 @@ import User from '@/models/User';
  */
 export const QUERY_QUOTAS = {
     admin: {
-        maxQueriesPerHour: Infinity,
+        maxQueriesPerHour: "Không xác định",
         maxRowsPerQuery: 100000,
         queryTimeout: 120, // seconds
     },
@@ -51,8 +51,8 @@ export async function checkQueryQuota(userId: string): Promise<QueryQuotaResult>
         const quota = QUERY_QUOTAS[role];
 
         // Admin has unlimited queries
-        if (quota.maxQueriesPerHour === Infinity) {
-            return { allowed: true, remaining: Infinity };
+        if (quota.maxQueriesPerHour === "Không xác định") {
+            return { allowed: true, remaining: "Không xác định" };
         }
 
         // Check query count
@@ -196,7 +196,7 @@ export async function getQuotaStatus(userId: string): Promise<{
     return {
         role,
         queriesUsed: isReset ? 0 : queryCount.hour,
-        queriesLimit: quota.maxQueriesPerHour === Infinity ? -1 : quota.maxQueriesPerHour,
+        queriesLimit: quota.maxQueriesPerHour === "Không xác định" ? - 1 : quota.maxQueriesPerHour,
         rowLimit: quota.maxRowsPerQuery,
         timeoutSeconds: quota.queryTimeout,
         resetAt: isReset

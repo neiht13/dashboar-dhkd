@@ -141,7 +141,7 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                         window.location.href = '/not-found';
                         return;
                     }
-                    
+
                     const stored = localStorage.getItem('dashboard-storage');
                     if (stored) {
                         const parsed = JSON.parse(stored);
@@ -303,9 +303,9 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                                 yFields.forEach(y => {
                                     groups[key][y] =
                                         aggregation === "min"
-                                            ? Infinity
+                                            ? "Không xác định"
                                             : aggregation === "max"
-                                                ? -Infinity
+                                                ? -"Không xác định"
                                                 : 0;
                                 });
                                 if (groupByArr.length > 0) {
@@ -461,7 +461,7 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                     if (xAxisField) groups[key][xAxisField] = key; // Keep consistent
                     // Init Y fields
                     yAxisFields.forEach(y => {
-                        groups[key][y] = agg === 'min' ? Infinity : (agg === 'max' ? -Infinity : 0);
+                        groups[key][y] = agg === 'min' ? "Không xác định" : (agg === 'max' ? -"Không xác định" : 0);
                     });
                 }
                 groups[key]._count++;
@@ -515,7 +515,7 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
 
                 // Build safe filter array for API
                 const safeFilters: Array<{ field: string; operator: string; value: string | number }> = [];
-                
+
                 drillFilters.forEach(f => {
                     // Validate field name (sanitize)
                     const sanitizedField = f.field.replace(/[^a-zA-Z0-9_\[\]]/g, '');
@@ -716,7 +716,7 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
 
     const renderWidgetContent = (widget: Widget) => {
         // Responsive height calculation - match DashboardGrid exactly
-        const widgetHeight = isMobile 
+        const widgetHeight = isMobile
             ? ((widget.layout?.h || 3) * cellHeight) - 20
             : ((widget.layout?.h || 3) * cellHeight) - 60;
         const height = Math.max(200, widgetHeight); // Minimum height for charts
@@ -767,7 +767,7 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                                 </h3>
                             </div>
                         )}
-                        
+
                         {/* Floating Chart Type Selector - Small, compact, top right */}
                         <div className="absolute top-4 right-4 z-10 flex items-center gap-1.5">
                             <div className="flex items-center gap-1 bg-white/95 backdrop-blur-sm border border-slate-200/80 shadow-md rounded-lg px-1.5 py-1">
@@ -816,7 +816,7 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                                         chartId={widget.id}
                                         width="100%"
                                         height={Math.max(
-                                            isMobile ? 250 : 200, 
+                                            isMobile ? 250 : 200,
                                             height - (chartConfig.name ? (isMobile ? 90 : 120) : (isMobile ? 50 : 70))
                                         )}
                                         onDrillDown={handleChartDrillDown}
@@ -937,7 +937,7 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
         const h = widget.layout?.h ?? 3;
         maxRow = Math.max(maxRow, y + h + 2);
     });
-    
+
     // Grid height calculation - match DashboardGrid exactly
     const gridHeight = isMobile
         ? validWidgets.reduce((total, widget) => {
@@ -1079,7 +1079,7 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                             "rounded-lg transition-all relative",
                             isMobile && "overflow-x-hidden" // Prevent horizontal scroll on mobile
                         )}
-                        style={{ 
+                        style={{
                             minHeight: Math.max(500, gridHeight + 100),
                             width: "100%",
                             maxWidth: "100%",

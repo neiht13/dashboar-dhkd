@@ -32,12 +32,12 @@ export function createCompositeLabel(
     if (groupByFields.length === 0) {
         return String(row[xAxis] || '');
     }
-    
+
     const labelParts = [
         String(row[xAxis] || ''),
         ...groupByFields.map(f => String(row[f] || ''))
     ];
-    
+
     return labelParts.join(' - ');
 }
 
@@ -76,38 +76,38 @@ export function aggregateChartData(
     const groupFields = [groupingField, ...groupByArr];
 
     const groups: Record<string, Record<string, unknown>> = {};
-    
+
     rawData.forEach(row => {
         const key = groupFields.map(f => String(row[f] ?? '')).join('|||');
-        
+
         if (!groups[key]) {
             groups[key] = { _count: 0 };
             groupFields.forEach(f => {
                 groups[key][f] = row[f];
             });
-            
+
             yAxis.forEach(y => {
-                groups[key][y] = 
-                    aggregation === 'min' 
-                        ? Infinity 
-                        : aggregation === 'max' 
-                            ? -Infinity 
+                groups[key][y] =
+                    aggregation === 'min'
+                        ? "Không xác định"
+                        : aggregation === 'max'
+                            ? -"Không xác định"
                             : 0;
             });
-            
+
             // Create composite label if groupBy exists
             if (groupByArr.length > 0) {
                 groups[key]._compositeLabel = createCompositeLabel(row, groupingField, groupByArr);
             }
-            
+
             // Initialize drillDownLabelField if present (for MAX aggregation)
             if (drillDownLabelField && row[drillDownLabelField]) {
                 groups[key][drillDownLabelField] = String(row[drillDownLabelField]);
             }
         }
-        
+
         (groups[key]._count as number)++;
-        
+
         yAxis.forEach(y => {
             const val = Number(row[y]) || 0;
             if (aggregation === 'sum' || aggregation === 'avg') {
@@ -118,7 +118,7 @@ export function aggregateChartData(
                 (groups[key][y] as number) = Math.max(groups[key][y] as number, val);
             }
         });
-        
+
         // Aggregate drillDownLabelField (MAX) if present
         if (drillDownLabelField && row[drillDownLabelField]) {
             const currentLabel = String(groups[key][drillDownLabelField] || '');
@@ -133,7 +133,7 @@ export function aggregateChartData(
     // Convert groups to array and apply aggregation calculations
     let processedData = Object.values(groups).map((g: any) => {
         const row: any = { ...g };
-        
+
         if (aggregation === 'avg') {
             yAxis.forEach(y => {
                 row[y] = row[y] / (g._count || 1);
@@ -143,20 +143,20 @@ export function aggregateChartData(
                 row[y] = g._count || 0;
             });
         }
-        
+
         delete row._count;
-        
+
         // Apply composite label to grouping field
         if (row._compositeLabel && groupingField) {
             row[groupingField] = row._compositeLabel;
             delete row._compositeLabel;
         }
-        
+
         // Add name/label for chart display
         const displayLabel = row[groupingField] || `#${Object.keys(groups).indexOf(g) + 1}`;
         row._label = displayLabel;
         row.name = displayLabel;
-        
+
         return row;
     });
 
@@ -175,15 +175,15 @@ export function sortChartData(
     orderDirection: 'asc' | 'desc' = 'asc'
 ): Record<string, unknown>[] {
     if (!orderBy) return data;
-    
+
     return [...data].sort((a, b) => {
         const aVal = a[orderBy];
         const bVal = b[orderBy];
-        
+
         if (typeof aVal === 'number' && typeof bVal === 'number') {
             return orderDirection === 'asc' ? aVal - bVal : bVal - aVal;
         }
-        
+
         return orderDirection === 'asc'
             ? String(aVal || '').localeCompare(String(bVal || ''))
             : String(bVal || '').localeCompare(String(aVal || ''));
@@ -216,13 +216,13 @@ export function processChartData(
 
     // Aggregate data
     const { data: aggregatedData } = aggregateChartData(rawData, options);
-    
+
     // Sort data
     let processedData = sortChartData(aggregatedData, orderBy, orderDirection);
-    
+
     // Limit data
     processedData = limitChartData(processedData, limit || 0);
-    
+
     return processedData;
 }
 
@@ -239,11 +239,11 @@ export function buildChartDataRequest(
     }
 ): Record<string, unknown> {
     const filters = [...(config.filters || [])];
-    
+
     // Apply date range filters
     const startCol = config.startDateColumn || config.dateColumn;
     const endCol = config.endDateColumn || config.dateColumn;
-    
+
     if (startCol && globalFilters?.dateRange?.from) {
         const fromDate = globalFilters.dateRange.from instanceof Date
             ? globalFilters.dateRange.from.toISOString().split('T')[0]
@@ -254,7 +254,7 @@ export function buildChartDataRequest(
             value: fromDate,
         });
     }
-    
+
     if (endCol && globalFilters?.dateRange?.to) {
         const toDate = globalFilters.dateRange.to instanceof Date
             ? globalFilters.dateRange.to.toISOString().split('T')[0]
@@ -265,7 +265,7 @@ export function buildChartDataRequest(
             value: toDate,
         });
     }
-    
+
     const requestBody: Record<string, unknown> = {
         table: config.table,
         xAxis: config.xAxis,
@@ -278,11 +278,11 @@ export function buildChartDataRequest(
         filters,
         connectionId: config.connectionId,
     };
-    
+
     // Add custom query if present
     if (config.queryMode === 'custom' && config.customQuery) {
         requestBody.customQuery = config.customQuery;
     }
-    
+
     return requestBody;
 }

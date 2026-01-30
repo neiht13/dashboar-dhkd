@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   ComposedChart, Line, PieChart, Pie, Cell, ScatterChart, Scatter, ZAxis, ReferenceLine,
@@ -8,56 +8,15 @@ import {
   LayoutDashboard, TrendingUp, Users, Tv, Wifi, Router,
   Activity, Grid, Search, Filter,
   ArrowUpDown, ChevronDown, ChevronUp, Target, AlertCircle,
-  BarChart2, List, CheckCircle, XCircle
+  BarChart2, List, CheckCircle, XCircle, Map as MapIcon, Maximize, Minimize, Calendar
 } from 'lucide-react';
+import { MapChart } from './charts/MapChart.lazy';
+import { LabelList } from 'recharts';
 
-// --- DỮ LIỆU TỪ XML ---
+// --- DỮ LIỆU TỪ XML (Metadata still static for now mostly) ---
 const REPORT_META = {
-  title: "TRUNG TÂM ĐIỀU HÀNH PTM (COMMAND CENTER)",
-  period: "Tháng 1 năm 2026",
-  lastUpdated: "28/01/2026 13:33"
-};
-
-const GLOBAL_STATS = {
-  fiber: { plan: 3985, actual: 4006, percent: 101.15 },
-  mytv: { plan: 1794, actual: 1959, percent: 109.19 },
-  meshCam: { plan: 1594, actual: 1295, percent: 81.24 }
-};
-
-const RAW_DATA = [
-  { id: 1, name: "Cái Bè", code: "CBE", planFiber: 281, actFiber: 248, planMyTV: 126, actMyTV: 172, planMC: 112, actMC: 78, channel_kt: 101, channel_kd: 131, channel_gdv: 3 },
-  { id: 2, name: "Chợ Gạo", code: "CGO", planFiber: 220, actFiber: 195, planMyTV: 99, actMyTV: 123, planMC: 88, actMC: 140, channel_kt: 117, channel_kd: 65, channel_gdv: 8 },
-  { id: 3, name: "Cao Lãnh", code: "CLH", planFiber: 315, actFiber: 346, planMyTV: 142, actMyTV: 253, planMC: 126, actMC: 137, channel_kt: 167, channel_kd: 146, channel_gdv: 26 },
-  { id: 4, name: "Cai Lậy", code: "CLY", planFiber: 290, actFiber: 292, planMyTV: 131, actMyTV: 133, planMC: 116, actMC: 27, channel_kt: 196, channel_kd: 87, channel_gdv: 1 },
-  { id: 5, name: "Châu Thành", code: "CTH", planFiber: 291, actFiber: 284, planMyTV: 131, actMyTV: 156, planMC: 116, actMC: 96, channel_kt: 109, channel_kd: 159, channel_gdv: 6 },
-  { id: 6, name: "Gò Công", code: "GCG", planFiber: 259, actFiber: 200, planMyTV: 117, actMyTV: 59, planMC: 104, actMC: 96, channel_kt: 114, channel_kd: 79, channel_gdv: 3 },
-  { id: 7, name: "Gò Công Tây", code: "GCT", planFiber: 192, actFiber: 168, planMyTV: 86, actMyTV: 75, planMC: 77, actMC: 53, channel_kt: 81, channel_kd: 73, channel_gdv: 9 },
-  { id: 8, name: "Hồng Ngự", code: "HNU", planFiber: 332, actFiber: 428, planMyTV: 149, actMyTV: 91, planMC: 133, actMC: 64, channel_kt: 184, channel_kd: 207, channel_gdv: 30 },
-  { id: 9, name: "Lai Vung", code: "LVG", planFiber: 348, actFiber: 383, planMyTV: 157, actMyTV: 207, planMC: 139, actMC: 89, channel_kt: 203, channel_kd: 156, channel_gdv: 17 },
-  { id: 10, name: "Mỹ Thọ", code: "MTH", planFiber: 169, actFiber: 167, planMyTV: 76, actMyTV: 110, planMC: 68, actMC: 62, channel_kt: 64, channel_kd: 91, channel_gdv: 7 },
-  { id: 11, name: "Mỹ Tho", code: "MTO", planFiber: 313, actFiber: 291, planMyTV: 141, actMyTV: 200, planMC: 125, actMC: 186, channel_kt: 106, channel_kd: 167, channel_gdv: 12 },
-  { id: 12, name: "Sa Đéc", code: "SDC", planFiber: 312, actFiber: 318, planMyTV: 140, actMyTV: 119, planMC: 125, actMC: 88, channel_kt: 142, channel_kd: 142, channel_gdv: 28 },
-  { id: 13, name: "Thanh Bình", code: "TBH", planFiber: 250, actFiber: 264, planMyTV: 113, actMyTV: 106, planMC: 100, actMC: 108, channel_kt: 101, channel_kd: 111, channel_gdv: 35 },
-  { id: 14, name: "Tháp Mười", code: "TMI", planFiber: 154, actFiber: 186, planMyTV: 69, actMyTV: 78, planMC: 62, actMC: 27, channel_kt: 116, channel_kd: 63, channel_gdv: 4 },
-  { id: 15, name: "Tam Nông", code: "TNG", planFiber: 148, actFiber: 154, planMyTV: 67, actMyTV: 36, planMC: 59, actMC: 15, channel_kt: 81, channel_kd: 67, channel_gdv: 5 },
-  { id: 16, name: "Tân Phước", code: "TPC", planFiber: 111, actFiber: 107, planMyTV: 50, actMyTV: 41, planMC: 44, actMC: 29, channel_kt: 71, channel_kd: 31, channel_gdv: 2 },
-];
-
-// --- XỬ LÝ DỮ LIỆU ---
-const DETAIL_DATA = RAW_DATA.map(d => ({
-  ...d,
-  pctFiber: parseFloat((d.actFiber / d.planFiber * 100).toFixed(1)),
-  pctMyTV: parseFloat((d.actMyTV / d.planMyTV * 100).toFixed(1)),
-  pctMC: parseFloat((d.actMC / d.planMC * 100).toFixed(1)),
-  totalAct: d.actFiber + d.actMyTV + d.actMC,
-  contributionScore: d.actFiber + d.actMyTV
-}));
-
-const AVG_STATS = {
-  pctFiber: DETAIL_DATA.reduce((acc, curr) => acc + curr.pctFiber, 0) / DETAIL_DATA.length,
-  pctMyTV: DETAIL_DATA.reduce((acc, curr) => acc + curr.pctMyTV, 0) / DETAIL_DATA.length,
-  pctMC: DETAIL_DATA.reduce((acc, curr) => acc + curr.pctMC, 0) / DETAIL_DATA.length,
-  totalAct: DETAIL_DATA.reduce((acc, curr) => acc + curr.totalAct, 0) / DETAIL_DATA.length,
+  title: "DASHBOARD PHÁT TRIỂN MỚI BĂNG RỘNG",
+  lastUpdated: new Date().toLocaleString('vi-VN')
 };
 
 // --- CHART COMPONENTS ---
@@ -151,7 +110,7 @@ const StatCard = ({ title, value, subValue, percent, icon: Icon, color }) => (
 
       {/* Gauge Integration */}
       <div className="ml-2 pt-2">
-        <AngularGauge value={percent} color={percent >= 100 ? '#10b981' : color} size={130} />
+        <AngularGauge value={percent} color={percent >= 100 ? '#10b981' : color} size={150} />
       </div>
     </div>
   </div>
@@ -193,8 +152,13 @@ const UnitTile = ({ unit, onClick, isSelected }) => {
 // --- MAIN DASHBOARD ---
 
 export default function UltimateDashboard() {
-  const [selectedUnit, setSelectedUnit] = useState(DETAIL_DATA[0]);
+  const [rawData, setRawData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedUnit, setSelectedUnit] = useState(null);
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'analysis'
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [month, setMonth] = useState(new Date().getMonth() + 1);
+  const [year, setYear] = useState(new Date().getFullYear());
 
   // Filter & Sort State
   const [filterText, setFilterText] = useState('');
@@ -202,25 +166,76 @@ export default function UltimateDashboard() {
   const [sortDir, setSortDir] = useState('desc'); // 'asc', 'desc'
   const [filterStatus, setFilterStatus] = useState('all'); // 'all', 'achieved', 'not_reached'
 
+  // --- FETCH DATA ---
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const res = await fetch('/api/database/chart-data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customQuery: `EXEC sp_rpt_ThongKe_PTM_Theo_C2 ${month}, ${year}`,
+            connectionId: "696995af8b327930665802d3"
+          })
+        });
+        const json = await res.json();
+        if (json.success) {
+          // Transform API data to internal format
+          const transformedData = json.data.map((d: any) => ({
+            id: d.Ma_DV,
+            name: d.Ten_DV,
+            code: d.TenTat,
+            planFiber: d.KeHoach_Fiber,
+            actFiber: d.Fiber_PTM,
+            planMyTV: d.KeHoach_MyTV,
+            actMyTV: d.MyTV_PTM,
+            planMC: d.KeHoach_MeshCam,
+            actMC: d.MeshCam_PTM,
+            channel_kt: d.CTV_NVKT,
+            channel_kd: d.CTV_NVKD,
+            channel_gdv: d.CTV_GDV,
+
+            // Calculated metrics
+            pctFiber: parseFloat((d.Fiber_PTM / (d.KeHoach_Fiber || 1) * 100).toFixed(1)),
+            pctMyTV: parseFloat((d.MyTV_PTM / (d.KeHoach_MyTV || 1) * 100).toFixed(1)),
+            pctMC: parseFloat((d.MeshCam_PTM / (d.KeHoach_MeshCam || 1) * 100).toFixed(1)),
+            totalAct: d.Fiber_PTM + d.MyTV_PTM + d.MeshCam_PTM,
+            contributionScore: d.Fiber_PTM + d.MyTV_PTM
+          }));
+          setRawData(transformedData);
+          if (transformedData.length > 0 && !selectedUnit) {
+            setSelectedUnit(transformedData[0]);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch data", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+    fetchData();
+  }, [month, year]);
+
   // --- LOGIC LỌC & SẮP XẾP ---
   const processedData = useMemo(() => {
-    let data = [...DETAIL_DATA];
+    let data = [...rawData];
 
     // 1. Filter Text
     if (filterText) {
       const lower = filterText.toLowerCase();
-      data = data.filter(d => d.name.toLowerCase().includes(lower) || d.code.toLowerCase().includes(lower));
+      data = data.filter((d: any) => d.name.toLowerCase().includes(lower) || d.code.toLowerCase().includes(lower));
     }
 
     // 2. Filter Status (theo Fiber)
     if (filterStatus === 'achieved') {
-      data = data.filter(d => d.pctFiber >= 100);
+      data = data.filter((d: any) => d.pctFiber >= 100);
     } else if (filterStatus === 'not_reached') {
-      data = data.filter(d => d.pctFiber < 100);
+      data = data.filter((d: any) => d.pctFiber < 100);
     }
 
     // 3. Sorting
-    data.sort((a, b) => {
+    data.sort((a: any, b: any) => {
       let valA = a[sortKey];
       let valB = b[sortKey];
 
@@ -236,19 +251,53 @@ export default function UltimateDashboard() {
     });
 
     return data;
-  }, [filterText, filterStatus, sortKey, sortDir]);
+  }, [rawData, filterText, filterStatus, sortKey, sortDir]);
 
-  // Data for charts
+  // --- GLOBAL STATS CALCULATION ---
+  const globalStats = useMemo(() => {
+    if (rawData.length === 0) return {
+      fiber: { plan: 0, actual: 0, percent: 0 },
+      mytv: { plan: 0, actual: 0, percent: 0 },
+      meshCam: { plan: 0, actual: 0, percent: 0 }
+    };
+
+    const fiberPlan = rawData.reduce((acc, curr: any) => acc + curr.planFiber, 0);
+    const fiberAct = rawData.reduce((acc, curr: any) => acc + curr.actFiber, 0);
+
+    const mytvPlan = rawData.reduce((acc, curr: any) => acc + curr.planMyTV, 0);
+    const mytvAct = rawData.reduce((acc, curr: any) => acc + curr.actMyTV, 0);
+
+    const mcPlan = rawData.reduce((acc, curr: any) => acc + curr.planMC, 0);
+    const mcAct = rawData.reduce((acc, curr: any) => acc + curr.actMC, 0);
+
+    return {
+      fiber: { plan: fiberPlan, actual: fiberAct, percent: parseFloat(((fiberAct / fiberPlan) * 100).toFixed(2)) },
+      mytv: { plan: mytvPlan, actual: mytvAct, percent: parseFloat(((mytvAct / mytvPlan) * 100).toFixed(2)) },
+      meshCam: { plan: mcPlan, actual: mcAct, percent: parseFloat(((mcAct / mcPlan) * 100).toFixed(2)) }
+    };
+  }, [rawData]);
+
+  const avgStats = useMemo(() => {
+    if (rawData.length === 0) return { pctFiber: 0, pctMyTV: 0, pctMC: 0, totalAct: 0 };
+    return {
+      pctFiber: rawData.reduce((acc, curr: any) => acc + curr.pctFiber, 0) / rawData.length,
+      pctMyTV: rawData.reduce((acc, curr: any) => acc + curr.pctMyTV, 0) / rawData.length,
+      pctMC: rawData.reduce((acc, curr: any) => acc + curr.pctMC, 0) / rawData.length,
+      totalAct: rawData.reduce((acc, curr: any) => acc + curr.totalAct, 0) / rawData.length,
+    };
+  }, [rawData]);
+
+  // Chart Data Preparation
   const radarData = useMemo(() => {
     if (!selectedUnit) return [];
     return [
-      { subject: 'Fiber %', A: selectedUnit.pctFiber, B: AVG_STATS.pctFiber, fullMark: 150 },
-      { subject: 'MyTV %', A: selectedUnit.pctMyTV, B: AVG_STATS.pctMyTV, fullMark: 150 },
-      { subject: 'Mesh/Cam %', A: selectedUnit.pctMC, B: AVG_STATS.pctMC, fullMark: 150 },
-      { subject: 'Thị phần', A: (selectedUnit.totalAct / AVG_STATS.totalAct) * 100, B: 100, fullMark: 200 },
+      { subject: 'Fiber %', A: selectedUnit.pctFiber, B: avgStats.pctFiber, fullMark: 150 },
+      { subject: 'MyTV %', A: selectedUnit.pctMyTV, B: avgStats.pctMyTV, fullMark: 150 },
+      { subject: 'Mesh/Cam %', A: selectedUnit.pctMC, B: avgStats.pctMC, fullMark: 150 },
+      { subject: 'Thị phần', A: (selectedUnit.totalAct / avgStats.totalAct || 1) * 100, B: 100, fullMark: 200 }, // Mock thị phần using relative volume
       { subject: 'Năng suất', A: (selectedUnit.channel_kd + selectedUnit.channel_kt > 0) ? (selectedUnit.totalAct / (selectedUnit.channel_kd + selectedUnit.channel_kt) * 20) : 0, B: 50, fullMark: 100 },
     ];
-  }, [selectedUnit]);
+  }, [selectedUnit, avgStats]);
 
   const serviceMixData = useMemo(() => {
     if (!selectedUnit) return [];
@@ -259,8 +308,19 @@ export default function UltimateDashboard() {
     ];
   }, [selectedUnit]);
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="flex flex-col items-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+          <div className="text-slate-500 font-medium">Đang tải dữ liệu báo cáo...</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-800 pb-10">
+    <div className={`min-h-screen bg-slate-50 font-sans text-slate-800 pb-10 ${isFullScreen ? 'fixed inset-0 z-50 overflow-auto' : ''}`}>
 
       {/* HEADER */}
       <div className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
@@ -272,7 +332,32 @@ export default function UltimateDashboard() {
               </div>
               <div>
                 <h1 className="text-lg font-black text-slate-900 tracking-tighter uppercase">{REPORT_META.title}</h1>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{REPORT_META.period}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <div className="flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded text-[10px] uppercase font-bold text-slate-600 border border-slate-200">
+                    <Calendar size={10} className="text-slate-400" />
+                    <span>Tháng</span>
+                    <select
+                      value={month}
+                      onChange={(e) => setMonth(parseInt(e.target.value))}
+                      className="bg-transparent outline-none text-blue-700 font-extrabold cursor-pointer hover:bg-slate-200 rounded px-1"
+                    >
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded text-[10px] uppercase font-bold text-slate-600 border border-slate-200">
+                    <span>Năm</span>
+                    <select
+                      value={year}
+                      onChange={(e) => setYear(parseInt(e.target.value))}
+                      className="bg-transparent outline-none text-blue-700 font-extrabold cursor-pointer hover:bg-slate-200 rounded px-1"
+                    >
+                      <option value={2025}>2025</option>
+                      <option value={2026}>2026</option>
+                    </select>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -287,7 +372,20 @@ export default function UltimateDashboard() {
                 onClick={() => setActiveTab('analysis')}
                 className={`flex items-center gap-2 px-4 py-1.5 text-xs font-bold uppercase transition-all rounded-none ${activeTab === 'analysis' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               >
-                <BarChart2 size={14} /> Phân tích sâu
+                <BarChart2 size={14} /> Phân tích
+              </button>
+              <button
+                onClick={() => setActiveTab('map')}
+                className={`flex items-center gap-2 px-4 py-1.5 text-xs font-bold uppercase transition-all rounded-none ${activeTab === 'map' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <MapIcon size={14} /> Bản đồ
+              </button>
+              <button
+                onClick={() => setIsFullScreen(!isFullScreen)}
+                title={isFullScreen ? "Thoát toàn màn hình" : "Toàn màn hình"}
+                className={`flex items-center justify-center w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors border-l border-white`}
+              >
+                {isFullScreen ? <Minimize size={14} /> : <Maximize size={14} />}
               </button>
             </div>
           </div>
@@ -300,23 +398,23 @@ export default function UltimateDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <StatCard
             title="Fiber Internet"
-            value={GLOBAL_STATS.fiber.actual.toLocaleString()}
-            subValue={GLOBAL_STATS.fiber.plan.toLocaleString()}
-            percent={GLOBAL_STATS.fiber.percent}
+            value={globalStats.fiber.actual.toLocaleString()}
+            subValue={globalStats.fiber.plan.toLocaleString()}
+            percent={globalStats.fiber.percent}
             icon={Wifi} color="#2563eb"
           />
           <StatCard
             title="Truyền hình MyTV"
-            value={GLOBAL_STATS.mytv.actual.toLocaleString()}
-            subValue={GLOBAL_STATS.mytv.plan.toLocaleString()}
-            percent={GLOBAL_STATS.mytv.percent}
+            value={globalStats.mytv.actual.toLocaleString()}
+            subValue={globalStats.mytv.plan.toLocaleString()}
+            percent={globalStats.mytv.percent}
             icon={Tv} color="#7c3aed"
           />
           <StatCard
             title="Mesh & Camera"
-            value={GLOBAL_STATS.meshCam.actual.toLocaleString()}
-            subValue={GLOBAL_STATS.meshCam.plan.toLocaleString()}
-            percent={GLOBAL_STATS.meshCam.percent}
+            value={globalStats.meshCam.actual.toLocaleString()}
+            subValue={globalStats.meshCam.plan.toLocaleString()}
+            percent={globalStats.meshCam.percent}
             icon={Router} color="#059669"
           />
         </div>
@@ -395,16 +493,29 @@ export default function UltimateDashboard() {
               </div>
               <div className="flex-1 w-full min-h-0">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={processedData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <ComposedChart
+                    data={(() => {
+                      if (processedData.length <= 10) return processedData;
+                      const top5 = processedData.slice(0, 5);
+                      const bottom5 = processedData.slice(-5);
+                      // Add a separator object if needed, or just combine. 
+                      // For a clean chart, we can just combine.
+                      return [...top5, ...bottom5];
+                    })()}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                  >      <CartesianGrid strokeDasharray="3 3" vertical={false} />
                     <XAxis dataKey="code" tick={{ fontSize: 10, fontWeight: 'bold' }} interval={0} />
                     <YAxis tick={{ fontSize: 10 }} />
                     <Tooltip
                       contentStyle={{ borderRadius: 0, border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                       cursor={{ fill: '#f1f5f9' }}
                     />
-                    <Bar dataKey="actFiber" name="Fiber" fill="#3b82f6" barSize={12} radius={[2, 2, 0, 0]} onClick={(data) => setSelectedUnit(data)} />
-                    <Bar dataKey="actMyTV" name="MyTV" fill="#8b5cf6" barSize={12} radius={[2, 2, 0, 0]} onClick={(data) => setSelectedUnit(data)} />
+                    <Bar dataKey="actFiber" name="Fiber" fill="#3b82f6" barSize={12} radius={[2, 2, 0, 0]} onClick={(data) => setSelectedUnit(data)}>
+                      <LabelList dataKey="actFiber" position="top" style={{ fontSize: '9px', fill: '#64748b' }} />
+                    </Bar>
+                    <Bar dataKey="actMyTV" name="MyTV" fill="#8b5cf6" barSize={12} radius={[2, 2, 0, 0]} onClick={(data) => setSelectedUnit(data)}>
+                      <LabelList dataKey="actMyTV" position="top" style={{ fontSize: '9px', fill: '#64748b' }} />
+                    </Bar>
                     <Line type="monotone" dataKey="planFiber" stroke="#fbbf24" strokeWidth={2} dot={false} strokeDasharray="3 3" />
                   </ComposedChart>
                 </ResponsiveContainer>
@@ -413,78 +524,86 @@ export default function UltimateDashboard() {
 
             {/* RIGHT: UNIT DETAIL (RADAR) */}
             <div className="bg-slate-800 text-white p-5 shadow-lg border-t-4 border-blue-500 flex flex-col">
-              <div className="flex justify-between items-start mb-2">
-                <div>
-                  <h2 className="font-bold text-lg">{selectedUnit.name}</h2>
-                  <span className="text-xs bg-slate-700 px-2 py-0.5 rounded text-slate-300 font-mono">{selectedUnit.code}</span>
-                </div>
-                <div className="text-right">
-                  <div className="text-3xl font-black text-blue-400">{selectedUnit.totalAct}</div>
-                  <div className="text-[10px] uppercase opacity-70">Tổng PTM</div>
-                </div>
-              </div>
-
-              <div className="flex-1 min-h-[250px] relative">
-                <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
-                    <PolarGrid stroke="#475569" />
-                    <PolarAngleAxis dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 'bold' }} />
-                    <PolarRadiusAxis angle={30} domain={[0, 150]} tick={false} axisLine={false} />
-                    <Radar
-                      name={selectedUnit.name}
-                      dataKey="A"
-                      stroke="#3b82f6"
-                      strokeWidth={2}
-                      fill="#3b82f6"
-                      fillOpacity={0.5}
-                    />
-                    <Radar
-                      name="TB Tỉnh"
-                      dataKey="B"
-                      stroke="#94a3b8"
-                      strokeWidth={1}
-                      strokeDasharray="4 4"
-                      fill="transparent"
-                      fillOpacity={0.1}
-                    />
-                    <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', color: '#fff' }} itemStyle={{ color: '#fff' }} />
-                  </RadarChart>
-                </ResponsiveContainer>
-              </div>
-
-              {/* Service Mix Donut */}
-              <div className="h-32 mt-4 border-t border-slate-700 pt-3 flex items-center">
-                <div className="w-1/2 h-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={serviceMixData}
-                        innerRadius={25}
-                        outerRadius={40}
-                        paddingAngle={5}
-                        dataKey="value"
-                      >
-                        {serviceMixData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
-                        ))}
-                      </Pie>
-                      <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', fontSize: '10px' }} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="w-1/2 text-[10px] space-y-1.5">
-                  <p className="text-slate-400 uppercase font-bold mb-1 border-b border-slate-700 pb-1">Cơ cấu dịch vụ</p>
-                  {serviceMixData.map((item, idx) => (
-                    <div key={idx} className="flex justify-between items-center">
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2" style={{ backgroundColor: item.color }}></div>
-                        <span className="text-slate-300">{item.name}</span>
-                      </div>
-                      <span className="font-bold">{item.value}</span>
+              {selectedUnit ? (
+                <>
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <h2 className="font-bold text-lg">{selectedUnit.name}</h2>
+                      <span className="text-xs bg-slate-700 px-2 py-0.5 rounded text-slate-300 font-mono">{selectedUnit.code}</span>
                     </div>
-                  ))}
+                    <div className="text-right">
+                      <div className="text-3xl font-black text-blue-400">{selectedUnit.totalAct}</div>
+                      <div className="text-[10px] uppercase opacity-70">Tổng PTM</div>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 min-h-[250px] relative">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
+                        <PolarGrid stroke="#475569" />
+                        <PolarAngleAxis dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 'bold' }} />
+                        <PolarRadiusAxis angle={30} domain={[0, 150]} tick={false} axisLine={false} />
+                        <Radar
+                          name={selectedUnit.name}
+                          dataKey="A"
+                          stroke="#3b82f6"
+                          strokeWidth={2}
+                          fill="#3b82f6"
+                          fillOpacity={0.5}
+                        />
+                        <Radar
+                          name="TB Tỉnh"
+                          dataKey="B"
+                          stroke="#94a3b8"
+                          strokeWidth={1}
+                          strokeDasharray="4 4"
+                          fill="transparent"
+                          fillOpacity={0.1}
+                        />
+                        <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', color: '#fff' }} itemStyle={{ color: '#fff' }} />
+                      </RadarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Service Mix Donut */}
+                  <div className="h-32 mt-4 border-t border-slate-700 pt-3 flex items-center">
+                    <div className="w-1/2 h-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={serviceMixData}
+                            innerRadius={25}
+                            outerRadius={40}
+                            paddingAngle={5}
+                            dataKey="value"
+                          >
+                            {serviceMixData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
+                            ))}
+                          </Pie>
+                          <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', fontSize: '10px' }} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="w-1/2 text-[10px] space-y-1.5">
+                      <p className="text-slate-400 uppercase font-bold mb-1 border-b border-slate-700 pb-1">Cơ cấu dịch vụ</p>
+                      {serviceMixData.map((item, idx) => (
+                        <div key={idx} className="flex justify-between items-center">
+                          <div className="flex items-center gap-1">
+                            <div className="w-2 h-2" style={{ backgroundColor: item.color }}></div>
+                            <span className="text-slate-300">{item.name}</span>
+                          </div>
+                          <span className="font-bold">{item.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center justify-center h-full text-slate-400 text-sm italic">
+                  Chọn một đơn vị để xem chi tiết
                 </div>
-              </div>
+              )}
             </div>
           </div>
         )}
@@ -495,7 +614,7 @@ export default function UltimateDashboard() {
             <div className="bg-white p-5 border border-slate-200 shadow-sm">
               <h2 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
                 <Target size={18} className="text-red-500" />
-                Ma trận Hiệu quả (Scatter Plot)
+                Ma trận Hiệu quả
               </h2>
               <div className="h-[400px]">
                 <ResponsiveContainer width="100%" height="100%">
@@ -548,13 +667,54 @@ export default function UltimateDashboard() {
                     <YAxis type="category" dataKey="code" tick={{ fontSize: 10, fontWeight: 'bold' }} width={30} />
                     <Tooltip />
                     <Legend wrapperStyle={{ fontSize: '11px' }} />
-                    <Bar dataKey="channel_kt" name="NVKT" stackId="a" fill="#0ea5e9" />
-                    <Bar dataKey="channel_kd" name="NVKD" stackId="a" fill="#6366f1" />
-                    <Bar dataKey="channel_gdv" name="GDV" stackId="a" fill="#10b981" />
+                    <Bar dataKey="channel_kt" name="NVKT" stackId="a" fill="#0ea5e9">
+                      <LabelList dataKey="channel_kt" position="center" style={{ fontSize: '9px', fill: '#fff' }} />
+                    </Bar>
+                    <Bar dataKey="channel_kd" name="NVKD" stackId="a" fill="#6366f1">
+                      <LabelList dataKey="channel_kd" position="center" style={{ fontSize: '9px', fill: '#fff' }} />
+                    </Bar>
+                    <Bar dataKey="channel_gdv" name="GDV" stackId="a" fill="#10b981">
+                      <LabelList dataKey="channel_gdv" position="center" style={{ fontSize: '9px', fill: '#fff' }} />
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* 6. MAP TAB CONTENT */}
+        {activeTab === 'map' && (
+          <div className="bg-white p-5 border border-slate-200 shadow-sm h-[600px] relative">
+            <h2 className="font-bold text-slate-800 mb-4 flex items-center gap-2 absolute top-5 left-5 z-10 bg-white/80 backdrop-blur-sm p-2 rounded shadow-sm">
+              <MapIcon size={18} className="text-emerald-500" />
+              Bản đồ Phủ sóng & Thị phần
+            </h2>
+            <MapChart
+              data={processedData}
+              config={{
+                id: 'map-chart', // Add required id
+                name: 'Map Chart', // Add required name
+                type: 'map', // Add required type
+                dataSource: {
+                  xAxis: 'code', // Maps to TTVT code (e.g. CBE, CGO)
+                  yAxis: ['pctFiber', 'pctMyTV', 'pctMC'],
+                  table: '', // Add required prop
+                  aggregation: 'sum' // Add required prop
+                },
+                style: {
+                  yAxisFieldLabels: {
+                    'pctFiber': 'Tỷ lệ Fiber (%)',
+                    'pctMyTV': 'Tỷ lệ MyTV (%)',
+                    'pctMC': 'Tỷ lệ Mesh/Cam (%)'
+                  },
+                  mapColorScheme: 'signal', // Corrected from 'heatmap'
+                  mapDisplayMode: 'heatmap', // Corrected from 'choropleth'
+                  tooltipTheme: 'light'
+                }
+              }}
+              height="100%"
+            />
           </div>
         )}
 

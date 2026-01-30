@@ -35,6 +35,7 @@ import {
 import * as icons from "lucide-react";
 import type { ChartConfig } from "@/types";
 import { getChartColor } from "@/lib/utils";
+import { processChartData } from "@/lib/chart-data-utils";
 // Lazy load MapChart to reduce initial bundle size
 import { MapChart } from "./MapChart.lazy";
 import { HexagonStat } from "./HexagonStat";
@@ -286,10 +287,25 @@ export function DynamicChart({
     const getFieldColor = (field: string, index: number): string =>
         yAxisFieldColors[field] || colors[index] || getChartColor(index);
 
+    // Process data (aggregate, sort, limit) using shared utility
+    const processedData = React.useMemo(() => {
+        // If data is already processed or we want raw data, skip processing
+        // But for consistency, we generally want to process
+        return processChartData(data, {
+            xAxis: dataSource?.xAxis,
+            yAxis: dataSource?.yAxis || [],
+            aggregation: dataSource?.aggregation,
+            groupBy: dataSource?.groupBy,
+            orderBy: dataSource?.orderBy,
+            orderDirection: dataSource?.orderDirection,
+            limit: dataSource?.limit,
+        });
+    }, [data, dataSource]);
+
     // Filter by xAxisExclude
     const filteredData = xAxisExclude.length > 0 && dataSource?.xAxis
-        ? data.filter(item => !xAxisExclude.includes(String(item[dataSource.xAxis])))
-        : data;
+        ? processedData.filter(item => !xAxisExclude.includes(String(item[dataSource.xAxis])))
+        : processedData;
 
     // Select tooltip component based on theme
     const TooltipComponent = tooltipTheme === 'light' ? CustomTooltipLight : CustomTooltip;
@@ -777,19 +793,16 @@ export function DynamicChart({
                                     fill={`url(#hbar-gradient-${index})`}
                                     radius={[0, 2, 2, 0]}
                                     {...animationProps}
-                                />
-                            ))}
-                            {/* Pass 2: Draw labels */}
-                            {showDataLabels && dataSource?.yAxis.map((field, index) => (
-                                <Bar
-                                    key={`label-${field}`}
-                                    dataKey={field}
-                                    fill="transparent"
-                                    isAnimationActive={false}
-                                    legendType="none"
-                                    tooltipType="none"
                                 >
-                                    <LabelList dataKey={field} position="right" fontSize={10} fill="#64748B" formatter={formatDataLabel} />
+                                    {showDataLabels && (
+                                        <LabelList
+                                            dataKey={field}
+                                            position="right"
+                                            fontSize={10}
+                                            fill="#64748B"
+                                            formatter={formatDataLabel}
+                                        />
+                                    )}
                                 </Bar>
                             ))}
                         </BarChart>
@@ -1214,7 +1227,15 @@ export function DynamicChart({
                                             fill={`url(#composed-gradient-${originalIndex})`}
                                             radius={[4, 4, 0, 0]}
                                             {...animationProps}
-                                        />
+                                        >
+                                            {showDataLabels && (
+                                                <LabelList
+                                                    dataKey={field}
+                                                    position={dataLabelPosition}
+                                                    content={renderCustomLabel}
+                                                />
+                                            )}
+                                        </Bar>
                                     );
                                 })}
 
@@ -1237,54 +1258,17 @@ export function DynamicChart({
                                             strokeLinecap="round"
                                             strokeLinejoin="round"
                                             {...lineAnimationProps}
-                                        />
-                                    );
-                                })}
-
-                            {/* Pass 3: All Labels last to stay on top of everything */}
-                            {showDataLabels && dataSource.yAxis.map((field, index) => {
-                                const type = composedFieldTypes[field] || (dataSource.yAxis.indexOf(field) % 2 === 0 ? 'bar' : 'line');
-                                const originalIndex = dataSource.yAxis.indexOf(field);
-
-                                if (type === 'bar') {
-                                    return (
-                                        <Bar
-                                            key={`label-${field}`}
-                                            dataKey={field}
-                                            fill="transparent"
-                                            isAnimationActive={false}
-                                            legendType="none"
-                                            tooltipType="none"
                                         >
-                                            <LabelList
-                                                dataKey={field}
-                                                position={dataLabelPosition}
-                                                content={renderCustomLabel}
-                                            />
-                                        </Bar>
-                                    );
-                                } else {
-                                    return (
-                                        <Line
-                                            key={`label-${field}`}
-                                            type="monotone"
-                                            dataKey={field}
-                                            stroke="transparent"
-                                            strokeWidth={0}
-                                            dot={false}
-                                            isAnimationActive={false}
-                                            legendType="none"
-                                            tooltipType="none"
-                                        >
-                                            <LabelList
-                                                dataKey={field}
-                                                position={dataLabelPosition}
-                                                content={renderCustomLabel}
-                                            />
+                                            {showDataLabels && (
+                                                <LabelList
+                                                    dataKey={field}
+                                                    position={dataLabelPosition}
+                                                    content={renderCustomLabel}
+                                                />
+                                            )}
                                         </Line>
                                     );
-                                }
-                            })}
+                                })}
                         </ComposedChart>
                     </ResponsiveContainer>
                 );

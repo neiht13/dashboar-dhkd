@@ -156,10 +156,10 @@ function DeleteWidgetButton({ widgetId }: { widgetId: string }) {
                     <X className="h-3 w-3" />
                 </button>
             </PopoverTrigger>
-            <PopoverContent 
-                className="w-60 p-3 z-50" 
-                align="end" 
-                onMouseDown={(e) => e.stopPropagation()} 
+            <PopoverContent
+                className="w-60 p-3 z-50"
+                align="end"
+                onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="space-y-3">
@@ -239,7 +239,7 @@ export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridPr
         if (!currentDashboard) return;
         const currentWidgetIds = new Set(currentDashboard.widgets.map(w => w.id));
         const cachedWidgetIds = Object.keys(chartDataCache);
-        
+
         // Remove cache for widgets that no longer exist
         const widgetsToRemove = cachedWidgetIds.filter(id => !currentWidgetIds.has(id));
         if (widgetsToRemove.length > 0) {
@@ -300,8 +300,8 @@ export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridPr
 
         // Collect all chart widgets that need data fetching
         const chartWidgets = currentDashboard.widgets.filter(
-            widget => widget.type === "chart" && 
-            !chartDataCache[widget.id] // Only fetch if not cached
+            widget => widget.type === "chart" &&
+                !chartDataCache[widget.id] // Only fetch if not cached
         );
 
         if (chartWidgets.length === 0) return;
@@ -387,11 +387,11 @@ export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridPr
                 if (result.success && result.data) {
                     // Process each chart's data (same post-processing as before)
                     const newCache: Record<string, any[]> = {};
-                    
+
                     batchRequests.forEach(req => {
                         const widget = chartWidgets.find(w => w.id === req.widgetId);
                         if (!widget) return;
-                        
+
                         const widgetConfig = widget.config as ChartConfigType;
                         const chartConfig = charts.find(c => c.id === widgetConfig.chartId)?.config || widgetConfig;
                         let chartData = result.data[req.widgetId] || [];
@@ -412,7 +412,7 @@ export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridPr
                                     groupBy: groupByArr,
                                     drillDownLabelField: chartConfig.dataSource.drillDownLabelField,
                                 });
-                                
+
                                 // Add _drillValue for backward compatibility
                                 chartData = chartData.map((row: any) => ({
                                     ...row,
@@ -574,7 +574,7 @@ export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridPr
 
             // Build request payload using shared utility
             const requestBody = buildChartDataRequest(config.dataSource, globalFilters);
-            
+
             // Override xAxis for card type and add custom query if needed
             if (isCard) {
                 requestBody.xAxis = undefined;
@@ -612,9 +612,9 @@ export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridPr
                             yFields.forEach(y => {
                                 groups[key][y] =
                                     aggregation === "min"
-                                        ? Infinity
+                                        ? "Không xác định"
                                         : aggregation === "max"
-                                            ? -Infinity
+                                            ? -"Không xác định"
                                             : 0;
                             });
                             // Composite label cho xAxis
@@ -752,7 +752,7 @@ export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridPr
                     if (xAxisField) groups[key][xAxisField] = key; // Keep consistent
                     // Init Y fields
                     yAxisFields.forEach(y => {
-                        groups[key][y] = agg === 'min' ? Infinity : (agg === 'max' ? -Infinity : 0);
+                        groups[key][y] = agg === 'min' ? "Không xác định" : (agg === 'max' ? -"Không xác định" : 0);
                     });
                 }
                 groups[key]._count++;
@@ -806,7 +806,7 @@ export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridPr
 
                 // Build safe filter array for API
                 const safeFilters: Array<{ field: string; operator: string; value: string | number }> = [];
-                
+
                 drillFilters.forEach(f => {
                     // Validate field name (sanitize)
                     const sanitizedField = f.field.replace(/[^a-zA-Z0-9_\[\]]/g, '');
@@ -1307,7 +1307,7 @@ export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridPr
     // Render different widget types
     const renderWidgetContent = (widget: Widget) => {
         // Responsive height calculation
-        const widgetHeight = isMobile 
+        const widgetHeight = isMobile
             ? ((widget.layout?.h || 3) * cellHeight) - (isEditing ? 50 : 20)
             : ((widget.layout?.h || 3) * cellHeight) - 60;
         const height = Math.max(200, widgetHeight); // Minimum height for charts
@@ -1625,7 +1625,7 @@ export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridPr
                     isOver && "ring-4 ring-[#0052CC]/40 bg-[#0052CC]/5",
                     isMobile && "overflow-x-hidden" // Prevent horizontal scroll on mobile
                 )}
-                style={{ 
+                style={{
                     minHeight: Math.max(500, gridHeight + 100),
                     width: "100%",
                     maxWidth: "100%",

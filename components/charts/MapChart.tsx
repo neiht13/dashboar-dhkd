@@ -108,7 +108,7 @@ const FilterPanel = ({
                             />
                             <span className="text-sm font-medium text-slate-700 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-1.5">
                                 <span className="inline-flex items-center justify-center w-5 h-5 bg-blue-700 text-white text-[10px] font-bold">
-                                all
+                                    all
                                 </span>
                                 Tất cả
                             </span>
@@ -116,7 +116,7 @@ const FilterPanel = ({
 
                         {/* Individual Layer Options - Y-axis columns */}
                         {yAxisOptions.map((option, index) => {
-                           
+
                             const bgColor = 'bg-blue-500';
                             const iconLetter = option.label.charAt(0).toUpperCase();
 
@@ -624,7 +624,7 @@ const MapLayers = ({ data, config, setLegendItems, regionType }: { data: any[], 
             // Calculate total values for each region to determine color intensity
             const regionTotals: { [key: string]: number } = {};
             let maxTotal = 0;
-            let minTotal = Infinity;
+            let minTotal = Number.MAX_VALUE;
 
             data.forEach(item => {
                 // Use lowercase for case-insensitive matching
@@ -635,7 +635,7 @@ const MapLayers = ({ data, config, setLegendItems, regionType }: { data: any[], 
                 });
                 regionTotals[code] = total;
                 if (total > maxTotal) maxTotal = total;
-                if (total < minTotal && total > 0) minTotal = total;
+                if (total < minTotal) minTotal = total;
             });
 
             // Define color thresholds for heatmap-style coloring
