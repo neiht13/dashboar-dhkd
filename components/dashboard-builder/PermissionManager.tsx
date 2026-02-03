@@ -26,11 +26,6 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-} from "@/components/ui/popover";
-import {
     Share2,
     Users,
     User,
@@ -41,12 +36,12 @@ import {
     Crown,
     Eye,
     Pencil,
-    Trash2,
     Copy,
     Check,
-    Link,
     Loader2,
     UsersRound,
+    RefreshCw,
+    Code,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -80,6 +75,7 @@ interface TeamSharePermission {
 
 interface PermissionData {
     dashboardId: string;
+    dashboardSlug?: string;
     dashboardName: string;
     owner: {
         _id: string;
@@ -134,6 +130,7 @@ export function PermissionManager({
     const [searchResults, setSearchResults] = useState<SearchResult | null>(null);
     const [searchLoading, setSearchLoading] = useState(false);
     const [copiedLink, setCopiedLink] = useState(false);
+    const [copiedEmbed, setCopiedEmbed] = useState(false);
     const [activeTab, setActiveTab] = useState<"users" | "teams">("users");
 
     const debouncedSearch = useDebounce(searchQuery, 300);
@@ -144,7 +141,11 @@ export function PermissionManager({
     const fetchPermissions = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await fetch(`${apiBase}/${dashboardId}/permissions`);
+            // Add timestamp to prevent caching
+            const res = await fetch(`${apiBase}/${dashboardId}/permissions?t=${Date.now()}`, {
+                cache: "no-store",
+                headers: { "Pragma": "no-cache" }
+            });
             const data = await res.json();
             if (data.success) {
                 setPermissionData(data.data);
@@ -154,7 +155,7 @@ export function PermissionManager({
         } finally {
             setLoading(false);
         }
-    }, [dashboardId]);
+    }, [dashboardId, apiBase]);
 
     useEffect(() => {
         if (open) {
@@ -296,20 +297,74 @@ export function PermissionManager({
                 await fetchPermissions();
                 onPermissionChange?.();
             }
-        } catch (error) {
-            console.error("Error updating public access:", error);
         } finally {
             setSaving(false);
         }
     };
 
+    // Regenerate Public Token
+    const regenerateToken = async () => {
+        if (!confirm("Bạn có chắc chắn muốn tạo lại token? Liên kết cũ sẽ không thể truy cập được nữa.")) return;
+
+        setSaving(true);
+        try {
+            const res = await fetch(`${apiBase}/${dashboardId}/permissions`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: 'regenerateToken' }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                await fetchPermissions();
+                toast.success("Đã tạo mới token bảo mật");
+            } else {
+                toast.error("Thất bại");
+            }
+        } catch (error) {
+            console.error("Error regenerating token:", error);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    // Get public link
+    const getPublicLink = () => {
+        if (!permissionData?.publicToken) return "";
+        const origin = typeof window !== "undefined" ? window.location.origin : "";
+
+        if (resourceType === "route" && permissionData.dashboardSlug) {
+            const slug = permissionData.dashboardSlug.startsWith("/")
+                ? permissionData.dashboardSlug.slice(1)
+                : permissionData.dashboardSlug;
+            return `${origin}/${slug}?token=${permissionData.publicToken}`;
+        }
+
+        return `${origin}/share/${permissionData.publicToken}`;
+    };
+
+    const getEmbedCode = () => {
+        const link = getPublicLink();
+        if (!link) return "";
+        return `<iframe src="${link}" width="100%" height="100%" frameborder="0" style="border:0" allowfullscreen></iframe>`;
+    };
+
     // Copy public link
     const copyPublicLink = () => {
-        if (permissionData?.publicToken) {
-            const link = `${window.location.origin}/share/${permissionData.publicToken}`;
+        const link = getPublicLink();
+        if (link) {
             navigator.clipboard.writeText(link);
             setCopiedLink(true);
             setTimeout(() => setCopiedLink(false), 2000);
+        }
+    };
+
+    // Copy embed code
+    const copyEmbedCode = () => {
+        const code = getEmbedCode();
+        if (code) {
+            navigator.clipboard.writeText(code);
+            setCopiedEmbed(true);
+            setTimeout(() => setCopiedEmbed(false), 2000);
         }
     };
 
@@ -662,23 +717,64 @@ export function PermissionManager({
                             </div>
 
                             {permissionData?.isPublic && permissionData.publicToken && (
-                                <div className="flex items-center gap-2">
-                                    <Input
-                                        readOnly
-                                        value={`${typeof window !== "undefined" ? window.location.origin : ""}/share/${permissionData.publicToken}`}
-                                        className="text-xs"
-                                    />
-                                    <Button
-                                        variant="outline"
-                                        size="icon"
-                                        onClick={copyPublicLink}
-                                    >
-                                        {copiedLink ? (
-                                            <Check className="h-4 w-4 text-green-500" />
-                                        ) : (
-                                            <Copy className="h-4 w-4" />
-                                        )}
-                                    </Button>
+                                <div className="space-y-3 pt-2">
+                                    <div className="grid gap-1.5">
+                                        <Label className="text-xs text-muted-foreground">Liên kết chia sẻ</Label>
+                                        <div className="flex items-center gap-2">
+                                            <Input
+                                                readOnly
+                                                value={getPublicLink()}
+                                                className="text-xs h-9"
+                                            />
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                onClick={copyPublicLink}
+                                                title="Sao chép liên kết"
+                                                className="h-9 w-9 shrink-0"
+                                            >
+                                                {copiedLink ? (
+                                                    <Check className="h-4 w-4 text-green-500" />
+                                                ) : (
+                                                    <Copy className="h-4 w-4" />
+                                                )}
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                onClick={regenerateToken}
+                                                disabled={saving}
+                                                title="Tạo lại token bảo mật (Token cũ sẽ vô hiệu lực)"
+                                                className="h-9 w-9 shrink-0"
+                                            >
+                                                <RefreshCw className={cn("h-4 w-4", saving && "animate-spin")} />
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid gap-1.5">
+                                        <Label className="text-xs text-muted-foreground">Mã nhúng (Iframe)</Label>
+                                        <div className="flex items-center gap-2">
+                                            <Input
+                                                readOnly
+                                                value={getEmbedCode()}
+                                                className="text-xs h-9 font-mono text-muted-foreground"
+                                            />
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                onClick={copyEmbedCode}
+                                                title="Sao chép mã nhúng"
+                                                className="h-9 w-9 shrink-0"
+                                            >
+                                                {copiedEmbed ? (
+                                                    <Check className="h-4 w-4 text-green-500" />
+                                                ) : (
+                                                    <Code className="h-4 w-4" />
+                                                )}
+                                            </Button>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
                         </div>

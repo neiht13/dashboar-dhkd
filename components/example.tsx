@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   ComposedChart, Line, PieChart, Pie, Cell, ScatterChart, Scatter, ZAxis, ReferenceLine,
@@ -8,12 +8,21 @@ import {
   LayoutDashboard, TrendingUp, Users, Tv, Wifi, Router,
   Activity, Grid, Search, Filter,
   ArrowUpDown, ChevronDown, ChevronUp, Target, AlertCircle,
-  BarChart2, List, CheckCircle, XCircle, Map as MapIcon, Maximize, Minimize, Calendar
+  BarChart2, List, CheckCircle, XCircle, Map as MapIcon, Maximize, Minimize, Calendar, Clock
 } from 'lucide-react';
 import { MapChart } from './charts/MapChart.lazy';
 import { LabelList } from 'recharts';
 
 // --- DỮ LIỆU TỪ XML (Metadata still static for now mostly) ---
+const REFRESH_INTERVALS = [
+  { label: "Không tự động", value: 0 },
+  { label: "30 giây", value: 30 },
+  { label: "1 phút", value: 60 },
+  { label: "5 phút", value: 300 },
+  { label: "15 phút", value: 900 },
+  { label: "30 phút", value: 1800 },
+];
+
 const REPORT_META = {
   title: "DASHBOARD PHÁT TRIỂN MỚI BĂNG RỘNG",
   lastUpdated: new Date().toLocaleString('vi-VN')
@@ -166,56 +175,90 @@ export default function UltimateDashboard() {
   const [sortDir, setSortDir] = useState('desc'); // 'asc', 'desc'
   const [filterStatus, setFilterStatus] = useState('all'); // 'all', 'achieved', 'not_reached'
 
-  // --- FETCH DATA ---
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const res = await fetch('/api/database/chart-data', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            customQuery: `EXEC sp_rpt_ThongKe_PTM_Theo_C2 ${month}, ${year}`,
-            connectionId: "696995af8b327930665802d3"
-          })
-        });
-        const json = await res.json();
-        if (json.success) {
-          // Transform API data to internal format
-          const transformedData = json.data.map((d: any) => ({
-            id: d.Ma_DV,
-            name: d.Ten_DV,
-            code: d.TenTat,
-            planFiber: d.KeHoach_Fiber,
-            actFiber: d.Fiber_PTM,
-            planMyTV: d.KeHoach_MyTV,
-            actMyTV: d.MyTV_PTM,
-            planMC: d.KeHoach_MeshCam,
-            actMC: d.MeshCam_PTM,
-            channel_kt: d.CTV_NVKT,
-            channel_kd: d.CTV_NVKD,
-            channel_gdv: d.CTV_GDV,
+  // Auto-refresh state
+  const [refreshInterval, setRefreshInterval] = useState(0);
+  const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-            // Calculated metrics
-            pctFiber: parseFloat((d.Fiber_PTM / (d.KeHoach_Fiber || 1) * 100).toFixed(1)),
-            pctMyTV: parseFloat((d.MyTV_PTM / (d.KeHoach_MyTV || 1) * 100).toFixed(1)),
-            pctMC: parseFloat((d.MeshCam_PTM / (d.KeHoach_MeshCam || 1) * 100).toFixed(1)),
-            totalAct: d.Fiber_PTM + d.MyTV_PTM + d.MeshCam_PTM,
-            contributionScore: d.Fiber_PTM + d.MyTV_PTM
-          }));
-          setRawData(transformedData);
-          if (transformedData.length > 0 && !selectedUnit) {
-            setSelectedUnit(transformedData[0]);
+  // --- FETCH DATA ---
+  const fetchData = useCallback(async () => {
+    // setLoading(true); // Removed to avoid full screen flicker on auto-refresh
+    try {
+      const res = await fetch('/api/database/chart-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customQuery: `EXEC sp_rpt_ThongKe_PTM_Theo_C2 ${month}, ${year}`,
+          connectionId: "696995af8b327930665802d3"
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        // Transform API data to internal format
+        const transformedData = json.data.map((d: any) => ({
+          id: d.Ma_DV,
+          name: d.Ten_DV,
+          code: d.TenTat,
+          planFiber: d.KeHoach_Fiber,
+          actFiber: d.Fiber_PTM,
+          planMyTV: d.KeHoach_MyTV,
+          actMyTV: d.MyTV_PTM,
+          planMC: d.KeHoach_MeshCam,
+          actMC: d.MeshCam_PTM,
+          channel_kt: d.CTV_NVKT,
+          channel_kd: d.CTV_NVKD,
+          channel_gdv: d.CTV_GDV,
+
+          // Calculated metrics
+          pctFiber: parseFloat((d.Fiber_PTM / (d.KeHoach_Fiber || 1) * 100).toFixed(1)),
+          pctMyTV: parseFloat((d.MyTV_PTM / (d.KeHoach_MyTV || 1) * 100).toFixed(1)),
+          pctMC: parseFloat((d.MeshCam_PTM / (d.KeHoach_MeshCam || 1) * 100).toFixed(1)),
+          totalAct: d.Fiber_PTM + d.MyTV_PTM + d.MeshCam_PTM,
+          contributionScore: d.Fiber_PTM + d.MyTV_PTM
+        }));
+        setRawData(transformedData);
+
+        // Preserve selection or set default
+        setSelectedUnit((prev: any) => {
+          if (transformedData.length === 0) return null;
+          if (prev) {
+            const found = transformedData.find((d: any) => d.id === prev.id);
+            return found || prev;
           }
-        }
-      } catch (error) {
-        console.error("Failed to fetch data", error);
-      } finally {
-        setLoading(false);
+          return transformedData[0];
+        });
+      }
+    } catch (error) {
+      console.error("Failed to fetch data", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [month, year]);
+
+  // Initial fetch
+  useEffect(() => {
+    setLoading(true);
+    fetchData();
+  }, [fetchData]);
+
+  // Auto-refresh timer
+  useEffect(() => {
+    if (refreshTimerRef.current) {
+      clearInterval(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+    }
+
+    if (refreshInterval > 0) {
+      refreshTimerRef.current = setInterval(() => {
+        fetchData();
+      }, refreshInterval * 1000);
+    }
+
+    return () => {
+      if (refreshTimerRef.current) {
+        clearInterval(refreshTimerRef.current);
       }
     };
-    fetchData();
-    fetchData();
-  }, [month, year]);
+  }, [refreshInterval, fetchData]);
 
   // --- LOGIC LỌC & SẮP XẾP ---
   const processedData = useMemo(() => {
@@ -320,18 +363,18 @@ export default function UltimateDashboard() {
   }
 
   return (
-    <div className={`min-h-screen bg-slate-50 font-sans text-slate-800 pb-10 ${isFullScreen ? 'fixed inset-0 z-50 overflow-auto' : ''}`}>
+    <div className={`h-screen w-full p-8 flex flex-col bg-slate-50 font-sans text-slate-800 ${isFullScreen ? 'fixed inset-0 z-[100]' : ''}`}>
 
       {/* HEADER */}
-      <div className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16 items-center">
+      <div className="bg-white border-b border-slate-200 shrink-0 shadow-sm">
+        <div className="w-full px-2">
+          <div className="flex justify-between h-14 items-center">
             <div className="flex items-center gap-3">
-              <div className="bg-blue-700 text-white p-2 rounded-none shadow-sm">
-                <Activity size={20} />
+              <div className="bg-blue-700 text-white p-1.5 rounded-none shadow-sm">
+                <Activity size={18} />
               </div>
               <div>
-                <h1 className="text-lg font-black text-slate-900 tracking-tighter uppercase">{REPORT_META.title}</h1>
+                <h1 className="text-base font-black text-slate-900 tracking-tighter uppercase">{REPORT_META.title}</h1>
                 <div className="flex items-center gap-2 mt-0.5">
                   <div className="flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded text-[10px] uppercase font-bold text-slate-600 border border-slate-200">
                     <Calendar size={10} className="text-slate-400" />
@@ -357,6 +400,18 @@ export default function UltimateDashboard() {
                       <option value={2026}>2026</option>
                     </select>
                   </div>
+                  <div className="flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded text-[10px] uppercase font-bold text-slate-600 border border-slate-200">
+                    <Clock size={10} className="text-slate-400" />
+                    <select
+                      value={refreshInterval}
+                      onChange={(e) => setRefreshInterval(parseInt(e.target.value))}
+                      className="bg-transparent outline-none text-blue-700 font-extrabold cursor-pointer hover:bg-slate-200 rounded px-1"
+                    >
+                      {REFRESH_INTERVALS.map(interval => (
+                        <option key={interval.value} value={interval.value}>{interval.label}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
             </div>
@@ -364,19 +419,19 @@ export default function UltimateDashboard() {
             <div className="flex bg-slate-100 p-1 rounded-none">
               <button
                 onClick={() => setActiveTab('overview')}
-                className={`flex items-center gap-2 px-4 py-1.5 text-xs font-bold uppercase transition-all rounded-none ${activeTab === 'overview' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`flex items-center gap-2 px-3 py-1 text-[11px] font-bold uppercase transition-all rounded-none ${activeTab === 'overview' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 <LayoutDashboard size={14} /> Toàn cảnh
               </button>
               <button
                 onClick={() => setActiveTab('analysis')}
-                className={`flex items-center gap-2 px-4 py-1.5 text-xs font-bold uppercase transition-all rounded-none ${activeTab === 'analysis' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`flex items-center gap-2 px-3 py-1 text-[11px] font-bold uppercase transition-all rounded-none ${activeTab === 'analysis' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 <BarChart2 size={14} /> Phân tích
               </button>
               <button
                 onClick={() => setActiveTab('map')}
-                className={`flex items-center gap-2 px-4 py-1.5 text-xs font-bold uppercase transition-all rounded-none ${activeTab === 'map' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`flex items-center gap-2 px-3 py-1 text-[11px] font-bold uppercase transition-all rounded-none ${activeTab === 'map' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 <MapIcon size={14} /> Bản đồ
               </button>
@@ -392,10 +447,10 @@ export default function UltimateDashboard() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      <div className="flex-1 overflow-y-auto p-2 space-y-2 w-full">
 
         {/* 1. GLOBAL KPI CARDS (ANGULAR GAUGE) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
           <StatCard
             title="Fiber Internet"
             value={globalStats.fiber.actual.toLocaleString()}
@@ -420,7 +475,7 @@ export default function UltimateDashboard() {
         </div>
 
         {/* 2. TOOLBAR (FILTER & SORT) */}
-        <div className="bg-white border border-slate-200 p-4 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4 sticky top-16 z-20">
+        <div className="bg-white border border-slate-200 p-2 shadow-sm flex flex-col md:flex-row justify-between items-center gap-2 sticky top-0 z-20">
           {/* Search */}
           <div className="relative w-full md:w-64">
             <Search size={16} className="absolute left-3 top-2.5 text-slate-400" />
@@ -494,14 +549,7 @@ export default function UltimateDashboard() {
               <div className="flex-1 w-full min-h-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart
-                    data={(() => {
-                      if (processedData.length <= 10) return processedData;
-                      const top5 = processedData.slice(0, 5);
-                      const bottom5 = processedData.slice(-5);
-                      // Add a separator object if needed, or just combine. 
-                      // For a clean chart, we can just combine.
-                      return [...top5, ...bottom5];
-                    })()}
+                    data={processedData}
                     margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
                   >      <CartesianGrid strokeDasharray="3 3" vertical={false} />
                     <XAxis dataKey="code" tick={{ fontSize: 10, fontWeight: 'bold' }} interval={0} />
