@@ -7,20 +7,24 @@ import {
     XAxis,
     YAxis,
     CartesianGrid,
-    Tooltip,
-    Legend,
-    ResponsiveContainer,
     Label,
     LabelList,
+    Brush,
 } from 'recharts';
 import type { CartesianChartProps } from '@/types/chart';
-import { getTooltipComponent } from '../shared/ChartTooltip';
-import { createLegendRenderer } from '../shared/ChartLegend';
-import { 
-    getFieldColor, 
-    formatDataLabel, 
+import {
+    ChartContainer,
+    ChartTooltip,
+    ChartTooltipContent,
+    ChartLegend,
+    ChartLegendContent,
+} from '@/components/ui/chart';
+import {
+    getFieldColor,
+    formatDataLabel,
+    formatXAxisTick,
     defaultAnimationConfig,
-    buildLegendColorMap 
+    buildShadcnChartConfig,
 } from '../utils/chart-utils';
 
 export function AreaChartComponent({
@@ -28,6 +32,7 @@ export function AreaChartComponent({
     config,
     width = "100%",
     height = "100%",
+    onChartClick,
     xAxisKey,
     yAxisKeys,
     styleProps,
@@ -35,124 +40,143 @@ export function AreaChartComponent({
     yAxisFieldColors,
 }: CartesianChartProps) {
     const colors = styleProps.colors;
-    const TooltipComponent = getTooltipComponent(styleProps.tooltipTheme);
-    const renderLegend = createLegendRenderer(
-        buildLegendColorMap(yAxisKeys, yAxisFieldColors, colors),
-        yAxisFieldLabels
+    const chartStyle = config.style;
+    const zoomSlider = chartStyle?.zoomSlider ?? false;
+    const showMarkers = chartStyle?.showMarkers ?? false;
+    const markerSize = chartStyle?.markerSize ?? 4;
+
+    const chartConfig = React.useMemo(
+        () => buildShadcnChartConfig(yAxisKeys, yAxisFieldLabels, yAxisFieldColors, colors),
+        [yAxisKeys, yAxisFieldLabels, yAxisFieldColors, colors]
     );
 
+    const handleChartClick = React.useCallback((event: unknown) => {
+        if (!onChartClick) return;
+        const payload = (event as { activePayload?: Array<{ payload?: Record<string, unknown> }> })?.activePayload?.[0]?.payload;
+        if (payload) {
+            onChartClick(payload);
+        }
+    }, [onChartClick]);
+
     return (
-        <ResponsiveContainer width={width} height={height}>
-            <AreaChart data={data} margin={{ top: 20, right: 20, bottom: 10, left: 10 }}>
+        <ChartContainer config={chartConfig} className="h-full w-full">
+            <AreaChart
+                accessibilityLayer
+                data={data}
+                margin={{ top: 8, right: 12, bottom: zoomSlider ? 32 : 8, left: 8 }}
+                onClick={handleChartClick}
+                style={onChartClick ? { cursor: "pointer" } : undefined}
+            >
                 <defs>
                     {yAxisKeys.map((field, index) => {
                         const color = getFieldColor(field, index, yAxisFieldColors, colors);
                         return (
-                            <React.Fragment key={field}>
-                                <linearGradient
-                                    id={`area-gradient-${index}`}
-                                    x1="0"
-                                    y1="0"
-                                    x2="0"
-                                    y2="1"
-                                >
-                                    <stop offset="5%" stopColor={color} stopOpacity={0.4} />
-                                    <stop offset="95%" stopColor={color} stopOpacity={0} />
-                                </linearGradient>
-                                <pattern
-                                    id={`area-hatch-${index}`}
-                                    x="0"
-                                    y="0"
-                                    width="6.81"
-                                    height="6.81"
-                                    patternUnits="userSpaceOnUse"
-                                    patternTransform="rotate(-45)"
-                                    overflow="visible"
-                                >
-                                    <g overflow="visible" style={{ willChange: 'transform' }}>
-                                        <animateTransform
-                                            attributeName="transform"
-                                            type="translate"
-                                            from="0 0"
-                                            to="6 0"
-                                            dur="1s"
-                                            repeatCount="indefinite"
-                                        />
-                                        <rect width="10" height="10" opacity={0.05} fill={color} />
-                                        <rect width="1" height="10" fill={color} />
-                                    </g>
-                                </pattern>
-                            </React.Fragment>
+                            <linearGradient
+                                key={field}
+                                id={`area-gradient-${index}`}
+                                x1="0"
+                                y1="0"
+                                x2="0"
+                                y2="1"
+                            >
+                                <stop offset="5%" stopColor={color} stopOpacity={0.4} />
+                                <stop offset="95%" stopColor={color} stopOpacity={0.02} />
+                            </linearGradient>
                         );
                     })}
                 </defs>
-                
+
                 {styleProps.showGrid && (
-                    <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
+                    <CartesianGrid vertical={false} />
                 )}
-                
+
                 <XAxis
                     dataKey={xAxisKey}
-                    tick={{ fontSize: 11, fill: "#64748B", fontWeight: 500 }}
-                    axisLine={{ stroke: "#E2E8F0" }}
+                    tickFormatter={(v) => formatXAxisTick(v, styleProps.xAxisTickFormat)}
                     tickLine={false}
-                    height={styleProps.xAxisLabel ? 40 : 30}
+                    axisLine={false}
+                    tickMargin={10}
+                    interval={0}
+                    height={styleProps.xAxisLabel ? 50 : (styleProps.xAxisTickAngle ? 60 : 30)}
                 >
                     {styleProps.xAxisLabel && (
-                        <Label value={styleProps.xAxisLabel} offset={-5} position="insideBottom" fill="#64748B" fontSize={12} />
+                        <Label value={styleProps.xAxisLabel} offset={-5} position="insideBottom" fontSize={12} fontWeight={600} />
                     )}
                 </XAxis>
-                
+
                 <YAxis
                     tickFormatter={(v) => formatDataLabel(v, styleProps.dataLabelFormat)}
-                    tick={{ fontSize: 11, fill: "#64748B", fontWeight: 500 }}
-                    axisLine={false}
                     tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
                     width={80}
                 >
                     {styleProps.yAxisLabel && (
-                        <Label 
-                            value={styleProps.yAxisLabel} 
-                            angle={-90} 
-                            position="insideLeft" 
-                            style={{ textAnchor: 'middle', fill: '#64748B', fontSize: 12 }} 
+                        <Label
+                            value={styleProps.yAxisLabel}
+                            angle={-90}
+                            position="insideLeft"
+                            style={{ textAnchor: 'middle' }}
                         />
                     )}
                 </YAxis>
-                
-                {styleProps.showTooltip && <Tooltip content={<TooltipComponent />} />}
+
+                {styleProps.showTooltip && <ChartTooltip content={<ChartTooltipContent />} />}
                 {styleProps.showLegend && (
-                    <Legend 
-                        content={renderLegend} 
-                        verticalAlign={styleProps.legendPosition as 'top' | 'bottom'} 
+                    <ChartLegend content={<ChartLegendContent />} />
+                )}
+
+                {zoomSlider && data.length > 5 && (
+                    <Brush
+                        dataKey={xAxisKey}
+                        height={24}
+                        stroke="#94A3B8"
+                        fill="#F1F5F9"
+                        travellerWidth={8}
+                        tickFormatter={() => ''}
                     />
                 )}
-                
-                {yAxisKeys.map((field, index) => (
-                    <Area
-                        key={field}
-                        type="natural"
-                        dataKey={field}
-                        name={field}
-                        stroke={getFieldColor(field, index, yAxisFieldColors, colors)}
-                        strokeWidth={2}
-                        fill={`url(#area-hatch-${index})`}
-                        fillOpacity={0.8}
-                        {...defaultAnimationConfig}
-                    >
-                        {styleProps.showDataLabels && (
-                            <LabelList
-                                dataKey={field}
-                                position={styleProps.dataLabelPosition}
-                                fontSize={styleProps.dataLabelFontSize}
-                                fill={styleProps.dataLabelColor}
-                                fontWeight={500}
-                                formatter={(v: number) => formatDataLabel(v, styleProps.dataLabelFormat)}
-                            />
-                        )}
-                    </Area>
-                ))}
+
+                {yAxisKeys.map((field, index) => {
+                    const fieldColor = getFieldColor(field, index, yAxisFieldColors, colors);
+                    return (
+                        <Area
+                            key={field}
+                            type="natural"
+                            dataKey={field}
+                            name={field}
+                            stroke={fieldColor}
+                            strokeWidth={2}
+                            fill={`url(#area-gradient-${index})`}
+                            fillOpacity={0.8}
+                            dot={showMarkers ? {
+                                fill: "#fff",
+                                stroke: fieldColor,
+                                strokeWidth: 2,
+                                r: markerSize,
+                            } : false}
+                            activeDot={{
+                                r: markerSize + 2,
+                                fill: fieldColor,
+                                stroke: "#fff",
+                                strokeWidth: 2,
+                            }}
+                            {...defaultAnimationConfig}
+                        >
+                            {styleProps.showDataLabels && (
+                                <LabelList
+                                    dataKey={field}
+                                    position={styleProps.dataLabelPosition}
+                                    fontSize={styleProps.dataLabelFontSize}
+                                    fill={styleProps.dataLabelColor}
+                                    fontWeight={500}
+                                    formatter={(v: number) => formatDataLabel(v, styleProps.dataLabelFormat)}
+                                />
+                            )}
+                        </Area>
+                    );
+                })}
             </AreaChart>
-        </ResponsiveContainer>
+        </ChartContainer>
     );
 }

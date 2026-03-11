@@ -74,12 +74,32 @@ export const useCrossFilterStore = create<CrossFilterState>((set, get) => ({
     },
 
     linkCharts: (groupId, chartIds) => {
-        set((state) => ({
-            linkedGroups: {
-                ...state.linkedGroups,
-                [groupId]: chartIds,
-            },
-        }));
+        const normalized = Array.from(
+            new Set(chartIds.filter((id): id is string => Boolean(id)))
+        ).sort();
+
+        set((state) => {
+            const current = state.linkedGroups[groupId] || [];
+            const isSame =
+                current.length === normalized.length &&
+                current.every((id, index) => id === normalized[index]);
+
+            if (isSame) return state;
+
+            if (normalized.length === 0) {
+                if (!(groupId in state.linkedGroups)) return state;
+                const rest = { ...state.linkedGroups };
+                delete rest[groupId];
+                return { linkedGroups: rest };
+            }
+
+            return {
+                linkedGroups: {
+                    ...state.linkedGroups,
+                    [groupId]: normalized,
+                },
+            };
+        });
     },
 
     unlinkChart: (groupId, chartId) => {
@@ -90,7 +110,8 @@ export const useCrossFilterStore = create<CrossFilterState>((set, get) => ({
             const newGroup = group.filter((id) => id !== chartId);
             
             if (newGroup.length === 0) {
-                const { [groupId]: _, ...rest } = state.linkedGroups;
+                const rest = { ...state.linkedGroups };
+                delete rest[groupId];
                 return { linkedGroups: rest };
             }
 

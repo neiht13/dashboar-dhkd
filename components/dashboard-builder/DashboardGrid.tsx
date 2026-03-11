@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { useRouter } from "next/navigation";
 import { useDashboardStore } from "@/stores/dashboard-store";
 import { useChartStore } from "@/stores/chart-store";
+import { useCrossFilterStore } from "@/stores/cross-filter-store";
+import { useShallow } from "zustand/react/shallow";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +18,6 @@ import { CrossFilterProvider, ActiveFiltersBar } from "@/components/charts/Cross
 import { cn, generateId } from "@/lib/utils";
 import { useIsMobile, useIsTablet } from "@/hooks/use-responsive";
 import { processChartData, buildChartDataRequest, createCompositeLabel } from "@/lib/chart-data-utils";
-import { useBatchChartData } from "@/hooks/use-chart-data-processing";
 import type { Widget, LayoutItem, ChartConfig as ChartConfigType } from "@/types";
 import {
     Dialog,
@@ -69,6 +70,110 @@ const CELL_HEIGHT = 60;
 const CELL_HEIGHT_MOBILE = 50; // Smaller cells on mobile
 const GAP = 16;
 const GAP_MOBILE = 12; // Smaller gap on mobile
+
+type QueryFilter = {
+    field: string;
+    operator: string;
+    value: string | number | string[] | number[];
+};
+
+const normalizeGroupBy = (groupBy?: string | string[]): string[] => {
+    if (!groupBy) return [];
+    return Array.isArray(groupBy) ? groupBy : [groupBy];
+};
+
+const filterSignature = (filter: QueryFilter) =>
+    `${filter.field}|${filter.operator}|${JSON.stringify(filter.value)}`;
+
+const mergeFilters = (base: QueryFilter[], extras: QueryFilter[]): QueryFilter[] => {
+    const seen = new Set<string>();
+    const merged: QueryFilter[] = [];
+
+    [...base, ...extras].forEach((filter) => {
+        const key = filterSignature(filter);
+        if (seen.has(key)) return;
+        seen.add(key);
+        merged.push(filter);
+    });
+
+    return merged;
+};
+
+const applyRecordFilters = (
+    rows: Record<string, unknown>[],
+    filters: QueryFilter[]
+): Record<string, unknown>[] => {
+    if (filters.length === 0) return rows;
+
+    const toNumberIfPossible = (value: unknown) => {
+        const num = Number(value);
+        return Number.isFinite(num) ? num : null;
+    };
+
+    const compareValue = (
+        rowValue: unknown,
+        operator: string,
+        filterValue: QueryFilter["value"]
+    ) => {
+        const op = operator.toUpperCase();
+        const rowNumber = toNumberIfPossible(rowValue);
+        const filterNumber = toNumberIfPossible(filterValue);
+
+        if (op === "IN") {
+            if (!Array.isArray(filterValue)) return false;
+            return filterValue.some((v) => String(v) === String(rowValue));
+        }
+
+        if (op === "LIKE") {
+            return String(rowValue ?? "")
+                .toLowerCase()
+                .includes(String(filterValue ?? "").toLowerCase());
+        }
+
+        if (rowNumber !== null && filterNumber !== null) {
+            switch (op) {
+                case "=":
+                    return rowNumber === filterNumber;
+                case "!=":
+                    return rowNumber !== filterNumber;
+                case ">":
+                    return rowNumber > filterNumber;
+                case ">=":
+                    return rowNumber >= filterNumber;
+                case "<":
+                    return rowNumber < filterNumber;
+                case "<=":
+                    return rowNumber <= filterNumber;
+                default:
+                    return false;
+            }
+        }
+
+        const left = String(rowValue ?? "");
+        const right = String(filterValue ?? "");
+
+        switch (op) {
+            case "=":
+                return left === right;
+            case "!=":
+                return left !== right;
+            case ">":
+                return left > right;
+            case ">=":
+                return left >= right;
+            case "<":
+                return left < right;
+            case "<=":
+                return left <= right;
+            default:
+                return false;
+        }
+    };
+
+    return rows.filter((row) =>
+        filters.every((filter) => compareValue(row[filter.field], filter.operator, filter.value))
+    );
+};
 
 // Helper to check collision
 const itemsCollide = (a: LayoutItem, b: LayoutItem) => {
@@ -196,20 +301,93 @@ function DeleteWidgetButton({ widgetId }: { widgetId: string }) {
 export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridProps = {}) {
     const {
         currentDashboard,
-        removeWidget,
         updateWidget,
-        updateLayout, // Get updateLayout
+        updateLayout,
         addWidget,
         isEditing,
-        globalFilters, // Get global filters
-    } = useDashboardStore();
+        globalFilters,
+    } = useDashboardStore(
+        useShallow((state) => ({
+            currentDashboard: state.currentDashboard,
+            updateWidget: state.updateWidget,
+            updateLayout: state.updateLayout,
+            addWidget: state.addWidget,
+            isEditing: state.isEditing,
+            globalFilters: state.globalFilters,
+        }))
+    );
+
+    // Dashboard-level drilldown: navigate to another tab with filters
+    const handleDashboardDrilldown = useCallback((targetTabId: string, filters: Record<string, string>) => {
+        const store = useDashboardStore.getState();
+        const dashboard = store.currentDashboard;
+        if (!dashboard) return;
+
+        const tabs = dashboard.tabs || [];
+        const activeTabId = dashboard.activeTabId || tabs[0]?.id;
+
+        // Push current tab to drilldown stack
+        store.pushDrilldown(activeTabId || "", filters);
+
+        // Save current tab's widgets
+        const updatedTabs = tabs.map((tab) =>
+            tab.id === activeTabId
+                ? { ...tab, widgets: dashboard.widgets, layout: dashboard.layout }
+                : tab
+        );
+
+        // Load target tab's widgets
+        const targetTab = updatedTabs.find((t) => t.id === targetTabId);
+        if (targetTab) {
+            store.setCurrentDashboard({
+                ...dashboard,
+                tabs: updatedTabs,
+                activeTabId: targetTabId,
+                widgets: targetTab.widgets || [],
+                layout: targetTab.layout || [],
+            });
+        }
+    }, []);
 
     const [containerWidth, setContainerWidth] = useState(1200); // Default fallback
     const isMobile = useIsMobile();
     const isTablet = useIsTablet();
 
     const router = useRouter();
-    const { charts } = useChartStore();
+    const charts = useChartStore((state) => state.charts) as any[];
+    const activeCrossFilters = useCrossFilterStore((state) => state.activeFilters);
+    const chartConfigById = React.useMemo(
+        () => new Map(charts.map((chart: any) => [chart.id, chart.config])),
+        [charts]
+    );
+    const crossFilterVersion = useMemo(
+        () =>
+            activeCrossFilters
+                .map((filter) => `${filter.chartId}:${filter.field}:${JSON.stringify(filter.value)}:${filter.operator}`)
+                .sort()
+                .join("||"),
+        [activeCrossFilters]
+    );
+
+    const getCrossFiltersForChart = useCallback((chartId: string): QueryFilter[] => {
+        const query = useCrossFilterStore.getState().buildFilterQuery(chartId);
+        return query as QueryFilter[];
+    }, []);
+
+    // Dashboard-level drilldown filters (applied to all charts on target tab)
+    const getDashboardDrilldownFilters = useCallback((): QueryFilter[] => {
+        const stack = useDashboardStore.getState().drilldownStack;
+        if (!stack.length) return [];
+
+        const active = stack[stack.length - 1];
+        const filters = active?.filters || {};
+
+        return Object.entries(filters).map(([field, value]) => ({
+            field,
+            operator: "=",
+            value,
+        }));
+    }, []);
 
     const gridRef = useRef<HTMLDivElement>(null);
     const [showSizeMenu, setShowSizeMenu] = useState<string | null>(null);
@@ -294,162 +472,180 @@ export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridPr
         setGridRows(maxRow);
     }, [currentDashboard?.widgets]);
 
-    // Fetch chart data for chart widgets using batch endpoint
+    const chartWidgetIds = useMemo(
+        () =>
+            (currentDashboard?.widgets || [])
+                .filter((w) => w.type === "chart")
+                .map((w) => w.id),
+        [currentDashboard?.widgets]
+    );
+
+    // Fetch all chart data via a single batch flow (import mode stays local).
+    // Includes cross-filter query state to avoid stale data when users click-filter.
     useEffect(() => {
         if (!currentDashboard) return;
 
-        // Collect all chart widgets that need data fetching
-        const chartWidgets = currentDashboard.widgets.filter(
-            widget => widget.type === "chart" &&
-                !chartDataCache[widget.id] // Only fetch if not cached
-        );
-
+        const chartWidgets = currentDashboard.widgets.filter((widget) => widget.type === "chart");
         if (chartWidgets.length === 0) return;
 
+        let cancelled = false;
+
         const fetchAllChartData = async () => {
-            // Build batch requests
-            const batchRequests = chartWidgets.map(widget => {
+            const nextCache: Record<string, Record<string, unknown>[]> = {};
+            const batchRequests: Array<{
+                widgetId: string;
+                config: Record<string, unknown>;
+            }> = [];
+
+            chartWidgets.forEach((widget) => {
                 const widgetConfig = widget.config as ChartConfigType;
-                const chartConfig = charts.find(c => c.id === widgetConfig.chartId)?.config || widgetConfig;
-                const isCard = chartConfig.type === 'card';
+                const chartConfig =
+                    chartConfigById.get((widgetConfig as any).chartId || "") || widgetConfig;
+                const isCard = chartConfig.type === "card";
 
-                // Handle import mode - process locally
-                if (chartConfig.dataSource?.queryMode === 'import' && chartConfig.dataSource?.importedData) {
-                    const rawData = chartConfig.dataSource.importedData as Record<string, unknown>[];
-                    const xAxis = chartConfig.dataSource.xAxis;
-                    const yAxis = chartConfig.dataSource.yAxis || [];
-                    const groupByFields = chartConfig.dataSource.groupBy;
-                    const orderByField = chartConfig.dataSource.orderBy;
-                    const orderDir = chartConfig.dataSource.orderDirection || 'asc';
-                    const limitNum = chartConfig.dataSource.limit || 0;
+                if (!chartConfig.dataSource) {
+                    nextCache[widget.id] = [];
+                    return;
+                }
 
-                    // Process import data using shared utility
-                    const processedData = processChartData(rawData, {
-                        xAxis,
-                        yAxis,
-                        aggregation: chartConfig.dataSource.aggregation || 'sum',
-                        groupBy: groupByFields,
-                        orderBy: orderByField,
-                        orderDirection: orderDir,
-                        limit: limitNum,
+                const crossFilters = getCrossFiltersForChart(widget.id);
+                const dashboardFilters = getDashboardDrilldownFilters();
+                const requestBody = buildChartDataRequest(chartConfig.dataSource, globalFilters) as Record<
+                    string,
+                    unknown
+                >;
+                const mergedFilters = mergeFilters(
+                    mergeFilters(
+                        (requestBody.filters as QueryFilter[] | undefined) || [],
+                        crossFilters
+                    ),
+                    dashboardFilters
+                );
+
+                if (chartConfig.dataSource.queryMode === "import" && chartConfig.dataSource.importedData) {
+                    const filteredImportData = applyRecordFilters(
+                        chartConfig.dataSource.importedData as Record<string, unknown>[],
+                        mergedFilters
+                    );
+
+                    nextCache[widget.id] = processChartData(filteredImportData, {
+                        xAxis: chartConfig.dataSource.xAxis,
+                        yAxis: chartConfig.dataSource.yAxis || [],
+                        aggregation: chartConfig.dataSource.aggregation || "sum",
+                        groupBy: chartConfig.dataSource.groupBy,
+                        orderBy: chartConfig.dataSource.orderBy,
+                        orderDirection: chartConfig.dataSource.orderDirection || "asc",
+                        limit: chartConfig.dataSource.limit || 0,
                         drillDownLabelField: chartConfig.dataSource.drillDownLabelField,
                     });
-
-                    setChartDataCache(prev => ({
-                        ...prev,
-                        [widget.id]: processedData,
-                    }));
-                    return null; // Skip API call for import mode
+                    return;
                 }
 
-                // Build request for API-based charts
-                if (!chartConfig.dataSource?.table || (!isCard && !chartConfig.dataSource?.xAxis) || !chartConfig.dataSource?.yAxis?.length) {
-                    return null;
+                if (
+                    !chartConfig.dataSource.table ||
+                    (!isCard && !chartConfig.dataSource.xAxis) ||
+                    !chartConfig.dataSource.yAxis?.length
+                ) {
+                    nextCache[widget.id] = [];
+                    return;
                 }
 
-                // Build request body using shared utility
-                const requestBody = buildChartDataRequest(chartConfig.dataSource, globalFilters);
-
-                const { queryMode, customQuery, connectionId } = chartConfig.dataSource;
-
-                return {
+                batchRequests.push({
                     widgetId: widget.id,
                     config: {
-                        table: chartConfig.dataSource.table,
+                        table: requestBody.table,
                         xAxis: isCard ? undefined : chartConfig.dataSource.xAxis,
-                        yAxis: chartConfig.dataSource.yAxis,
-                        aggregation: chartConfig.dataSource.aggregation || "sum",
-                        groupBy: chartConfig.dataSource.groupBy || undefined,
-                        orderBy: chartConfig.dataSource.orderBy,
-                        orderDirection: chartConfig.dataSource.orderDirection,
-                        limit: chartConfig.dataSource.limit || undefined,
-                        filters: savedFilters,
-                        connectionId,
-                        queryMode,
-                        customQuery,
+                        yAxis: requestBody.yAxis,
+                        aggregation: requestBody.aggregation,
+                        groupBy: requestBody.groupBy || undefined,
+                        orderBy: requestBody.orderBy,
+                        orderDirection: requestBody.orderDirection,
+                        limit: requestBody.limit || undefined,
+                        filters: mergedFilters,
+                        connectionId: requestBody.connectionId,
+                        queryMode: chartConfig.dataSource.queryMode,
+                        customQuery: requestBody.customQuery || chartConfig.dataSource.customQuery,
                         drillDownLabelField: chartConfig.dataSource.drillDownLabelField,
-                        resolution: chartConfig.dataSource.resolution,
+                        resolution: requestBody.resolution || chartConfig.dataSource.resolution,
                     },
-                };
-            }).filter((req): req is NonNullable<typeof req> => req !== null);
-
-            if (batchRequests.length === 0) return;
-
-            try {
-                // Fetch all charts in a single batch request
-                const response = await fetch("/api/database/chart-data/batch", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ requests: batchRequests }),
                 });
+            });
 
-                const result = await response.json();
-                if (result.success && result.data) {
-                    // Process each chart's data (same post-processing as before)
-                    const newCache: Record<string, any[]> = {};
+            if (batchRequests.length > 0) {
+                try {
+                    const response = await fetch("/api/database/chart-data/batch", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ requests: batchRequests }),
+                    });
 
-                    batchRequests.forEach(req => {
-                        const widget = chartWidgets.find(w => w.id === req.widgetId);
-                        if (!widget) return;
+                    const result = await response.json();
+                    if (result.success && result.data) {
+                        batchRequests.forEach((requestItem) => {
+                            const widget = chartWidgets.find((w) => w.id === requestItem.widgetId);
+                            if (!widget) return;
 
-                        const widgetConfig = widget.config as ChartConfigType;
-                        const chartConfig = charts.find(c => c.id === widgetConfig.chartId)?.config || widgetConfig;
-                        let chartData = result.data[req.widgetId] || [];
-
-                        if (chartData.length > 0) {
+                            const widgetConfig = widget.config as ChartConfigType;
+                            const chartConfig =
+                                chartConfigById.get((widgetConfig as any).chartId || "") || widgetConfig;
                             const xAxis = chartConfig.dataSource?.xAxis;
-                            const groupByFields = chartConfig.dataSource?.groupBy;
-                            const groupByArr = Array.isArray(groupByFields) ? groupByFields : groupByFields ? [groupByFields] : [];
+                            const groupByArr = normalizeGroupBy(chartConfig.dataSource?.groupBy);
                             const queryMode = chartConfig.dataSource?.queryMode;
                             const aggregation = chartConfig.dataSource?.aggregation || "sum";
+                            let chartData = (result.data[requestItem.widgetId] || []) as Record<string, unknown>[];
 
-                            // Post-process custom SQL mode using shared utility
-                            if (queryMode === 'custom' && xAxis && chartConfig.dataSource?.yAxis?.length) {
+                            if (chartData.length > 0 && queryMode === "custom" && xAxis && chartConfig.dataSource?.yAxis?.length) {
                                 chartData = processChartData(chartData, {
                                     xAxis,
                                     yAxis: chartConfig.dataSource.yAxis,
-                                    aggregation: aggregation as any,
+                                    aggregation: aggregation as "sum" | "avg" | "count" | "min" | "max",
                                     groupBy: groupByArr,
                                     drillDownLabelField: chartConfig.dataSource.drillDownLabelField,
-                                });
-
-                                // Add _drillValue for backward compatibility
-                                chartData = chartData.map((row: any) => ({
+                                }).map((row) => ({
                                     ...row,
                                     _drillValue: row._drillValue || row[xAxis],
                                 }));
-                            } else if (xAxis && groupByArr.length > 0) {
-                                // Simple mode: just create composite labels
-                                chartData = chartData.map((row: any) => {
-                                    const labelParts = [String(row[xAxis] || ''), ...groupByArr.map(g => String(row[g] || ''))];
-                                    return {
-                                        ...row,
-                                        _drillValue: row[xAxis],
-                                        [xAxis]: labelParts.join(' - '),
-                                    };
-                                });
+                            } else if (chartData.length > 0 && xAxis && groupByArr.length > 0) {
+                                chartData = chartData.map((row) => ({
+                                    ...row,
+                                    _drillValue: row[xAxis],
+                                    [xAxis]: createCompositeLabel(row, xAxis, groupByArr),
+                                }));
                             }
-                        }
 
-                        newCache[req.widgetId] = chartData;
-                    });
-
-                    setChartDataCache(prev => ({
-                        ...prev,
-                        ...newCache,
-                    }));
-                }
-            } catch (error) {
-                if (error instanceof Error) {
-                    console.error("Error fetching batch chart data:", error.message);
-                } else {
-                    console.error("Error fetching batch chart data:", String(error));
+                            nextCache[requestItem.widgetId] = chartData;
+                        });
+                    }
+                } catch (error) {
+                    if (error instanceof Error) {
+                        console.error("Error fetching batch chart data:", error.message);
+                    } else {
+                        console.error("Error fetching batch chart data:", String(error));
+                    }
                 }
             }
+
+            if (cancelled) return;
+            setChartDataCache((prev) => ({
+                ...prev,
+                ...nextCache,
+            }));
         };
 
         fetchAllChartData();
-    }, [currentDashboard?.widgets, charts, globalFilters, refreshTrigger]);
+
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        currentDashboard?.widgets,
+        chartConfigById,
+        globalFilters,
+        refreshTrigger,
+        crossFilterVersion,
+        getCrossFiltersForChart,
+        getDashboardDrilldownFilters,
+    ]);
 
     // Clear cache when refresh is triggered
     useEffect(() => {
@@ -612,9 +808,9 @@ export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridPr
                             yFields.forEach(y => {
                                 groups[key][y] =
                                     aggregation === "min"
-                                        ? "Không xác định"
+                                        ? Number.POSITIVE_INFINITY
                                         : aggregation === "max"
-                                            ? -"Không xác định"
+                                            ? Number.NEGATIVE_INFINITY
                                             : 0;
                             });
                             // Composite label cho xAxis
@@ -659,6 +855,13 @@ export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridPr
                             });
                         }
                         delete row._count;
+                        if (aggregation === "min" || aggregation === "max") {
+                            config.dataSource.yAxis.forEach(y => {
+                                if (!Number.isFinite(row[y])) {
+                                    row[y] = 0;
+                                }
+                            });
+                        }
 
                         // Store original value for drill-down
                         if (xAxis) {
@@ -696,332 +899,152 @@ export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridPr
                 console.error("Error fetching chart data:", String(error));
             }
         }
-    }, [globalFilters, charts]);
+    }, [globalFilters]);
 
-    useEffect(() => {
-        if (!currentDashboard) return;
+    // Fetch drill-down data with multi-level group-by support and cross-filter injection.
+    const fetchDrillDownData = useCallback(
+        async (
+            chartId: string,
+            config: ChartConfigType,
+            drillFilters: Array<{ field: string; operator: string; value: string | number }>,
+            nextGroupBy?: string
+        ): Promise<Record<string, unknown>[]> => {
+            if (!config.dataSource) return [];
 
-        currentDashboard.widgets.forEach(widget => {
-            if (widget.type === "chart") {
-                // Get the widget's stored config
-                const widgetConfig = widget.config as ChartConfigType;
+            const requestBody = buildChartDataRequest(config.dataSource, globalFilters) as Record<
+                string,
+                unknown
+            >;
+            const baseFilters = (requestBody.filters as QueryFilter[] | undefined) || [];
+            const crossFilters = getCrossFiltersForChart(chartId);
+            const dashboardFilters = getDashboardDrilldownFilters();
+            const targetXAxis =
+                nextGroupBy || config.dataSource.drillDownLabelField || config.dataSource.xAxis;
+            const mergedFilters = mergeFilters(
+                mergeFilters(
+                    mergeFilters(baseFilters, drillFilters as QueryFilter[]),
+                    crossFilters
+                ),
+                dashboardFilters
+            );
 
-                // Look up the LATEST chart config from the chart store by ID
-                // This ensures we use updated filters/settings if the chart was re-saved
-                const latestChart = charts.find(c => c.id === widgetConfig.id);
-                const config = latestChart || widgetConfig; // Fallback to widget config if not found
+            if (config.dataSource.queryMode === "import" && config.dataSource.importedData) {
+                const filteredData = applyRecordFilters(
+                    config.dataSource.importedData as Record<string, unknown>[],
+                    mergedFilters
+                );
 
-                fetchChartData(widget.id, config);
-            }
-        });
-    }, [currentDashboard, fetchChartData]); // Add charts dependency
-
-    // Fetch drill-down data: WHERE filter, NO GROUP BY - show raw records
-    const fetchDrillDownData = useCallback(async (
-        config: ChartConfigType,
-        drillFilters: Array<{ field: string; operator: string; value: string | number }>
-    ): Promise<Record<string, unknown>[]> => {
-        // Handle import mode - filter imported data locally
-        if (config.dataSource?.queryMode === 'import' && config.dataSource?.importedData) {
-            const xAxisField = config.dataSource.xAxis;
-            const labelField = config.dataSource.drillDownLabelField || xAxisField;
-
-            // Filter the imported data based on drill filters
-            let filteredData = [...config.dataSource.importedData] as Record<string, unknown>[];
-
-            drillFilters.forEach(f => {
-                filteredData = filteredData.filter(row => {
-                    const rowValue = row[f.field];
-                    return String(rowValue) === String(f.value);
-                });
-            });
-
-            // Aggregate filtered data by labelField
-            const groups: Record<string, any> = {};
-            const yAxisFields = config.dataSource.yAxis || [];
-            // Default aggregation to sum for import if not specified
-            const agg = config.dataSource.aggregation || 'sum';
-
-            filteredData.forEach(row => {
-                // Use labelField as grouping key
-                const key = String(row[labelField] || row[xAxisField] || 'Unknown');
-
-                if (!groups[key]) {
-                    groups[key] = { _count: 0 };
-                    if (labelField) groups[key][labelField] = key;
-                    if (xAxisField) groups[key][xAxisField] = key; // Keep consistent
-                    // Init Y fields
-                    yAxisFields.forEach(y => {
-                        groups[key][y] = agg === 'min' ? "Không xác định" : (agg === 'max' ? -"Không xác định" : 0);
-                    });
+                if (!targetXAxis || !config.dataSource.yAxis?.length) {
+                    return filteredData;
                 }
-                groups[key]._count++;
 
-                yAxisFields.forEach(y => {
-                    const val = Number(row[y]) || 0;
-                    if (agg === 'sum' || agg === 'avg') {
-                        groups[key][y] += val;
-                    } else if (agg === 'min') {
-                        groups[key][y] = Math.min(groups[key][y], val);
-                    } else if (agg === 'max') {
-                        groups[key][y] = Math.max(groups[key][y], val);
-                    }
+                const processed = processChartData(filteredData, {
+                    xAxis: targetXAxis,
+                    yAxis: config.dataSource.yAxis,
+                    aggregation: config.dataSource.aggregation || "sum",
+                    groupBy: nextGroupBy ? undefined : config.dataSource.groupBy,
+                    orderBy: config.dataSource.orderBy,
+                    orderDirection: config.dataSource.orderDirection || "asc",
+                    limit: config.dataSource.limit || 0,
+                    drillDownLabelField: config.dataSource.drillDownLabelField,
                 });
-            });
 
-            return Object.values(groups).map((g: any, index) => {
-                const row: any = { ...g };
-                if (agg === 'avg') {
-                    yAxisFields.forEach(y => {
-                        row[y] = row[y] / g._count;
-                    });
-                } else if (agg === 'count') {
-                    yAxisFields.forEach(y => {
-                        row[y] = g._count;
-                    });
-                }
-                delete row._count;
-                return {
+                return processed.map((row, index) => ({
                     ...row,
                     _row_id: index + 1,
-                    _label: row[labelField] || row[xAxisField] || `#${index + 1}`,
-                    name: row[labelField] || row[xAxisField] || `#${index + 1}`,
-                };
-            });
-        }
+                    _drillValue: row[targetXAxis],
+                    name: row[targetXAxis] || row.name || `#${index + 1}`,
+                }));
+            }
 
-        // Handle Custom SQL mode - re-query with drill filters and aggregate like outer chart
-        if (config.dataSource?.queryMode === 'custom' && config.dataSource?.customQuery) {
+            if (config.dataSource.queryMode === "custom" && config.dataSource.customQuery) {
+                try {
+                    const response = await fetch("/api/database/chart-data", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            customQuery: config.dataSource.customQuery.trim(),
+                            connectionId: config.dataSource.connectionId,
+                            filters: mergedFilters,
+                        }),
+                    });
+
+                    const result = await response.json();
+                    if (!result.success || !result.data) return [];
+
+                    if (!targetXAxis || !config.dataSource.yAxis?.length) {
+                        return result.data as Record<string, unknown>[];
+                    }
+
+                    const processed = processChartData(result.data as Record<string, unknown>[], {
+                        xAxis: targetXAxis,
+                        yAxis: config.dataSource.yAxis,
+                        aggregation: config.dataSource.aggregation || "sum",
+                        groupBy: nextGroupBy ? undefined : normalizeGroupBy(config.dataSource.groupBy),
+                        drillDownLabelField: config.dataSource.drillDownLabelField,
+                    });
+
+                    return processed.map((row) => ({
+                        ...row,
+                        _drillValue: row[targetXAxis],
+                    }));
+                } catch (error) {
+                    if (error instanceof Error) {
+                        console.error("Error fetching Custom SQL drill-down data:", error.message);
+                    } else {
+                        console.error("Error fetching Custom SQL drill-down data:", String(error));
+                    }
+                    return [];
+                }
+            }
+
+            if (!config.dataSource.table || !config.dataSource.yAxis?.length || !targetXAxis) {
+                return [];
+            }
+
             try {
-                const xAxisField = config.dataSource.xAxis;
-                const yAxisFields = config.dataSource.yAxis || [];
-                const aggregation = config.dataSource.aggregation || 'sum';
-                const groupByFields = config.dataSource.groupBy;
-                const groupByArr = Array.isArray(groupByFields) ? groupByFields : groupByFields ? [groupByFields] : [];
-
-                // Modify the custom query to add WHERE conditions for drill filters
-                // IMPORTANT: We send filters as separate parameters to API for safe parameterized queries
-                // The API will handle building safe WHERE clauses
-                const customQuery = config.dataSource.customQuery;
-
-                // Build safe filter array for API
-                const safeFilters: Array<{ field: string; operator: string; value: string | number }> = [];
-
-                drillFilters.forEach(f => {
-                    // Validate field name (sanitize)
-                    const sanitizedField = f.field.replace(/[^a-zA-Z0-9_\[\]]/g, '');
-                    if (sanitizedField && sanitizedField === f.field) {
-                        safeFilters.push({
-                            field: sanitizedField,
-                            operator: f.operator || '=',
-                            value: f.value,
-                        });
-                    }
-                });
-
-                // Add global date filters as safe parameters
-                const startCol = config.dataSource.startDateColumn;
-                const endCol = config.dataSource.endDateColumn;
-
-                if (startCol && globalFilters.dateRange?.from) {
-                    const sanitizedStartCol = startCol.replace(/[^a-zA-Z0-9_\[\]]/g, '');
-                    if (sanitizedStartCol === startCol) {
-                        const fromDate = globalFilters.dateRange.from instanceof Date
-                            ? globalFilters.dateRange.from.toISOString().split('T')[0]
-                            : globalFilters.dateRange.from;
-                        safeFilters.push({
-                            field: sanitizedStartCol,
-                            operator: '>=',
-                            value: fromDate,
-                        });
-                    }
-                }
-
-                if (endCol && globalFilters.dateRange?.to) {
-                    const sanitizedEndCol = endCol.replace(/[^a-zA-Z0-9_\[\]]/g, '');
-                    if (sanitizedEndCol === endCol) {
-                        const toDate = globalFilters.dateRange.to instanceof Date
-                            ? globalFilters.dateRange.to.toISOString().split('T')[0]
-                            : globalFilters.dateRange.to;
-                        safeFilters.push({
-                            field: sanitizedEndCol,
-                            operator: '<=',
-                            value: toDate,
-                        });
-                    }
-                }
-
                 const response = await fetch("/api/database/chart-data", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        customQuery: customQuery.trim(),
-                        connectionId: config.dataSource.connectionId,
-                        filters: safeFilters, // Send filters as separate parameterized array
+                        ...requestBody,
+                        xAxis: targetXAxis,
+                        groupBy: nextGroupBy ? undefined : requestBody.groupBy,
+                        filters: mergedFilters,
                     }),
                 });
 
                 const result = await response.json();
-                if (result.success && result.data && result.data.length > 0) {
-                    let chartData = result.data as Record<string, unknown>[];
+                if (!result.success || !result.data) return [];
 
-                    // Apply same aggregation logic using shared utility
-                    if (xAxisField && yAxisFields.length > 0) {
-                        chartData = processChartData(chartData, {
-                            xAxis: config.dataSource.drillDownLabelField || xAxisField,
-                            yAxis: yAxisFields,
-                            aggregation,
-                            groupBy: groupByArr,
-                            drillDownLabelField: config.dataSource.drillDownLabelField,
-                        });
-                    }
+                const groupByArr = nextGroupBy ? [] : normalizeGroupBy(config.dataSource.groupBy);
+                const records = result.data as Record<string, unknown>[];
 
-                    return chartData;
-                }
-                return [];
-            } catch (error) {
-                // Log error (sanitized - no sensitive data)
-                if (error instanceof Error) {
-                    console.error("Error fetching Custom SQL drill-down data:", error.message);
-                } else {
-                    console.error("Error fetching Custom SQL drill-down data:", String(error));
-                }
-                return [];
-            }
-        }
-
-        if (!config.dataSource?.table || !config.dataSource?.yAxis?.length) {
-            return [];
-        }
-
-        try {
-            const table = config.dataSource.table;
-            const yAxisFields = config.dataSource.yAxis;
-            const xAxisField = config.dataSource.xAxis;
-            // Use drillDownLabelField if configured, otherwise fall back to xAxis
-            const labelField = config.dataSource.drillDownLabelField || xAxisField;
-
-            // Build WHERE conditions from drill filters
-            const whereConditions: string[] = [];
-
-            // Add drill filters (WHERE donvi = 'TTVT1')
-            drillFilters.forEach(f => {
-                const field = f.field.replace(/[^\w]/g, '');
-                const value = typeof f.value === 'string' ? `N'${f.value}'` : f.value;
-                whereConditions.push(`[${field}] = ${value}`);
-            });
-
-            // Add saved filters from chart config
-            (config.dataSource.filters || []).forEach(f => {
-                const field = f.field.replace(/[^\w]/g, '');
-                const value = typeof f.value === 'string' ? `N'${f.value}'` : f.value;
-                whereConditions.push(`[${field}] ${f.operator} ${value}`);
-            });
-
-            // Add global date filters if configured
-            const startCol = config.dataSource.startDateColumn;
-            const endCol = config.dataSource.endDateColumn;
-
-            if (startCol && globalFilters.dateRange?.from) {
-                const fromDate = globalFilters.dateRange.from instanceof Date
-                    ? globalFilters.dateRange.from.toISOString().split('T')[0]
-                    : globalFilters.dateRange.from;
-                whereConditions.push(`[${startCol}] >= '${fromDate}'`);
-            }
-
-            if (endCol && globalFilters.dateRange?.to) {
-                const toDate = globalFilters.dateRange.to instanceof Date
-                    ? globalFilters.dateRange.to.toISOString().split('T')[0]
-                    : globalFilters.dateRange.to;
-                whereConditions.push(`[${endCol}] <= '${toDate}'`);
-            }
-
-            const whereClause = whereConditions.length > 0
-                ? `WHERE ${whereConditions.join(' AND ')}`
-                : '';
-
-            // Build SELECT columns - GROUP BY with aggregation
-            const yAxisSelect = yAxisFields.map(f => {
-                const field = `[${f.replace(/[^\w]/g, '')}]`;
-                const agg = config.dataSource.aggregation || 'sum';
-                switch (agg) {
-                    case 'avg': return `AVG(${field}) as [${f}]`;
-                    case 'min': return `MIN(${field}) as [${f}]`;
-                    case 'max': return `MAX(${field}) as [${f}]`;
-                    case 'count': return `COUNT(${field}) as [${f}]`;
-                    case 'sum':
-                    default: return `SUM(${field}) as [${f}]`;
-                }
-            }).join(', ');
-
-            // Build GROUP BY columns: X-axis + additional groupBy fields
-            const groupByFields = config.dataSource.groupBy;
-            const groupByArr = Array.isArray(groupByFields) ? groupByFields : groupByFields ? [groupByFields] : [];
-
-            // Check if we have a drillDownLabelField - if so, we should GROUP BY that field for the next level
-            // instead of the original xAxis (since we are filtering by xAxis)
-            const nextDrillLabel = config.dataSource.drillDownLabelField;
-            const effectiveGroupCol = (nextDrillLabel && nextDrillLabel !== xAxisField) ? nextDrillLabel : xAxisField;
-
-            // Fields to select and group by
-            // If we use labelField, we select it. Otherwise select xAxis.
-            const groupCols = [effectiveGroupCol, ...groupByArr].filter(Boolean).map(f => `[${f.replace(/[^\w]/g, '')}]`);
-
-            const customQuery = `
-                SELECT 
-                    ${groupCols.join(', ')},
-                    ${yAxisSelect}
-                FROM [dbo].[${table}]
-                ${whereClause}
-                GROUP BY ${groupCols.join(', ')}
-            `;
-
-            // Debug log removed for security (query details should not be logged client-side)
-
-            const response = await fetch("/api/database/chart-data", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    customQuery: customQuery.trim(),
-                    connectionId: config.dataSource.connectionId,
-                }),
-            });
-
-            const result = await response.json();
-            if (result.success && result.data && result.data.length > 0) {
-                // Return aggregated data
-                return result.data.map((row: any, index: number) => {
-                    // Create composite label for X-axis if needed
-                    if (groupByArr.length > 0 && xAxisField) {
-                        const labelParts = [String(row[xAxisField] || ''), ...groupByArr.map(g => String(row[g] || ''))];
-                        const compositeLabel = labelParts.join(' - ');
-                        return {
-                            ...row,
-                            [xAxisField]: compositeLabel, // Override X-axis value with composite label
-                            name: compositeLabel,
-                            _index: index + 1
-                        };
-                    }
+                return records.map((row, index) => {
+                    const displayLabel =
+                        groupByArr.length > 0
+                            ? createCompositeLabel(row, targetXAxis, groupByArr)
+                            : String(row[targetXAxis] ?? `#${index + 1}`);
 
                     return {
                         ...row,
-                        name: row[labelField] || row[xAxisField] || `#${index + 1}`,
                         _index: index + 1,
+                        _drillValue: row[targetXAxis],
+                        [targetXAxis]: displayLabel,
+                        name: displayLabel,
                     };
                 });
+            } catch (error) {
+                if (error instanceof Error) {
+                    console.error("Error fetching drill-down data:", error.message);
+                } else {
+                    console.error("Error fetching drill-down data:", String(error));
+                }
+                return [];
             }
-
-            return [];
-        } catch (error) {
-            // Log error (sanitized - no sensitive data)
-            if (error instanceof Error) {
-                console.error("Error fetching drill-down data:", error.message);
-            } else {
-                console.error("Error fetching drill-down data:", String(error));
-            }
-            return [];
-        }
-    }, [globalFilters]);
+        },
+        [globalFilters, getCrossFiltersForChart, getDashboardDrilldownFilters]
+    );
 
     // Handle widget resize via presets
     const handleResize = useCallback((widgetId: string, size: keyof typeof SIZE_PRESETS) => {
@@ -1076,14 +1099,12 @@ export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridPr
         addWidget(clonedWidget);
     }, [addWidget]);
 
-    // Open edit dialog
+    // Open edit dialog - Power BI style: select widget for inline panel editing
     const handleOpenEditDialog = useCallback((widget: Widget) => {
         if (widget.type === "chart") {
-            // Redirect to chart builder for charts
-            const chartConfig = widget.config as ChartConfigType;
-            if (chartConfig.id) {
-                router.push(`/charts/new?edit=${chartConfig.id}`);
-            }
+            // Power BI-style: select widget to edit via right panel instead of redirecting
+            useDashboardStore.getState().setSelectedWidgetId(widget.id);
+            useDashboardStore.getState().setRightPanelTab('build');
             return;
         }
 
@@ -1326,9 +1347,10 @@ export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridPr
 
                 // Create drill-down handler for this specific chart
                 const handleChartDrillDown = async (
-                    drillFilters: Array<{ field: string; operator: string; value: string | number }>
+                    drillFilters: Array<{ field: string; operator: string; value: string | number }>,
+                    nextGroupBy?: string
                 ) => {
-                    return fetchDrillDownData(baseChartConfig, drillFilters);
+                    return fetchDrillDownData(widget.id, baseChartConfig, drillFilters, nextGroupBy);
                 };
 
                 // Handle chart type change (temporary override)
@@ -1414,16 +1436,28 @@ export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridPr
                                     isMobile && "overflow-x-auto" // Allow horizontal scroll for wide charts
                                 )}>
                                     <InteractiveChart
-                                        config={chartConfig}
+                                        config={{
+                                            ...chartConfig,
+                                            // Inject tab's drilldown config so InteractiveChart can navigate
+                                            _tabDrilldown: (() => {
+                                                const tabs = currentDashboard?.tabs || [];
+                                                const activeTabId = currentDashboard?.activeTabId || tabs[0]?.id;
+                                                const activeTab = tabs.find(t => t.id === activeTabId);
+                                                return activeTab?.drilldown;
+                                            })(),
+                                        } as typeof chartConfig}
                                         data={chartData}
                                         chartId={widget.id}
                                         width="100%"
                                         height={Math.max(isMobile ? 250 : 100, height - (isEditing ? 0 : isMobile ? 50 : 28))}
                                         // Drill-down: re-query with WHERE filter
                                         onDrillDown={handleChartDrillDown}
+                                        // Dashboard-level drilldown (tab navigation)
+                                        onDashboardDrilldown={handleDashboardDrilldown}
                                         // Enable cross-filtering between charts
                                         enableCrossFilter={true}
                                         crossFilterField={xAxisField}
+                                        crossFilterFields={chartConfig.dataSource?.crossFilterFields}
                                     />
                                 </div>
                             ) : (
@@ -1593,11 +1627,6 @@ export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridPr
         }, 0)
         : gridRows * cellHeight + (gridRows - 1) * gap;
 
-    // Get all chart widget IDs for cross-filter linking
-    const chartWidgetIds = widgets
-        .filter(w => w.type === 'chart')
-        .map(w => w.id);
-
     return (
         <CrossFilterProvider linkedChartIds={chartWidgetIds}>
             {/* Active Filters Bar */}
@@ -1665,15 +1694,25 @@ export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridPr
                             </div>
                         </div>
                     ) : (
-                        widgets.map((widget) => (
+                        widgets.map((widget) => {
+                            const isSelected = useDashboardStore.getState().selectedWidgetId === widget.id;
+                            return (
                             <Card
                                 key={widget.id}
                                 className={cn(
                                     "overflow-hidden bg-white shadow-md hover:shadow-lg transition-all group border-[#E2E8F0]",
-                                    isEditing && "border-2 border-[#0052CC]/40 hover:border-[#0052CC]",
+                                    isEditing && !isSelected && "border-2 border-[#0052CC]/40 hover:border-[#0052CC]",
+                                    isEditing && isSelected && "border-2 border-yellow-400 ring-2 ring-yellow-200 shadow-xl",
                                     draggingWidgetId === widget.id && "opacity-70 shadow-2xl z-50"
                                 )}
                                 style={getWidgetStyle(previewLayout[widget.id] || widget.layout)}
+                                onClick={(e) => {
+                                    // Select widget for Power BI panel editing
+                                    if (isEditing) {
+                                        e.stopPropagation();
+                                        useDashboardStore.getState().setSelectedWidgetId(widget.id);
+                                    }
+                                }}
                             >
                                 {/* Widget Header - responsive with touch support */}
                                 {isEditing && (
@@ -1907,7 +1946,7 @@ export function DashboardGrid({ refreshTrigger, onDataUpdated }: DashboardGridPr
                                     />
                                 )}
                             </Card>
-                        ))
+                        );})
                     )}
                 </div>
 

@@ -4,13 +4,15 @@ import {
   ComposedChart, Line, PieChart, Pie, Cell, ScatterChart, Scatter, ZAxis, ReferenceLine,
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis
 } from 'recharts';
+import { useTheme } from 'next-themes';
 import {
   LayoutDashboard, TrendingUp, Users, Tv, Wifi, Router,
   Activity, Grid, Search, Filter,
   ArrowUpDown, ChevronDown, ChevronUp, Target, AlertCircle,
-  BarChart2, List, CheckCircle, XCircle, Map as MapIcon, Maximize, Minimize, Calendar, Clock
+  BarChart2, List, CheckCircle, XCircle, Map as MapIcon, Maximize, Minimize, Calendar, Clock,
+  Sun, Moon
 } from 'lucide-react';
-import { MapChart } from './charts/MapChart.lazy';
+import { MapChart } from '../charts/MapChart.lazy';
 import { LabelList } from 'recharts';
 
 // --- DỮ LIỆU TỪ XML (Metadata still static for now mostly) ---
@@ -33,6 +35,9 @@ const REPORT_META = {
 // ANGULAR GAUGE CHART (SVG)
 // Vẽ đồng hồ bán nguyệt nhưng với style vuông vức, đầu kim nhọn
 const AngularGauge = ({ value, color, size = 120 }) => {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+
   // Giới hạn giá trị hiển thị từ 0-100 trên đồng hồ, nhưng số liệu text vẫn hiển thị thực tế
   const percent = Math.min(Math.max(value, 0), 100);
   const radius = size / 2;
@@ -53,7 +58,7 @@ const AngularGauge = ({ value, color, size = 120 }) => {
         <path
           d={`M ${strokeWidth},${radius} A ${normalizedRadius},${normalizedRadius} 0 0 1 ${size - strokeWidth},${radius}`}
           fill="none"
-          stroke="#f1f5f9"
+          stroke={isDark ? "#334155" : "#f1f5f9"}
           strokeWidth={strokeWidth}
           strokeLinecap="butt" // Đầu vuông cho cảm giác góc cạnh
         />
@@ -72,9 +77,9 @@ const AngularGauge = ({ value, color, size = 120 }) => {
         {/* Needle (Triangle Shape) */}
         <g transform={`translate(${radius}, ${radius}) rotate(${rotation})`}>
           {/* Kim hình tam giác nhọn */}
-          <polygon points="-4,-10 0,-radius 4,-10" fill="#1e293b" transform={`scale(${size / 100}) translate(0, -${normalizedRadius - 15})`} />
+          <polygon points="-4,-10 0,-radius 4,-10" fill={isDark ? "#e2e8f0" : "#1e293b"} transform={`scale(${size / 100}) translate(0, -${normalizedRadius - 15})`} />
           {/* Tâm kim */}
-          <circle cx="0" cy="0" r="4" fill="#1e293b" />
+          <circle cx="0" cy="0" r="4" fill={isDark ? "#e2e8f0" : "#1e293b"} />
         </g>
       </svg>
 
@@ -89,7 +94,7 @@ const AngularGauge = ({ value, color, size = 120 }) => {
 };
 
 const StatCard = ({ title, value, subValue, percent, icon: Icon, color }) => (
-  <div className="bg-white border border-slate-200 shadow-sm hover:shadow-md transition-all duration-300 rounded-none group relative overflow-hidden">
+  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 rounded-none group relative overflow-hidden">
     {/* Decorative corner accent */}
     <div className="absolute top-0 right-0 w-0 h-0 border-l-[40px] border-l-transparent border-t-[40px]" style={{ borderTopColor: color, opacity: 0.1 }}></div>
 
@@ -97,22 +102,22 @@ const StatCard = ({ title, value, subValue, percent, icon: Icon, color }) => (
       <div className="flex-1 flex flex-col justify-between h-full">
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <div className={`p-1.5 rounded-none bg-slate-100 text-slate-600`}>
+            <div className={`p-1.5 rounded-none bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400`}>
               <Icon size={16} />
             </div>
-            <h3 className="text-slate-500 text-[11px] font-bold uppercase tracking-widest">{title}</h3>
+            <h3 className="text-slate-500 dark:text-slate-400 text-[11px] font-bold uppercase tracking-widest">{title}</h3>
           </div>
           <div className="mt-1">
-            <span className="text-3xl font-black text-slate-800 tracking-tight block">{value}</span>
-            <span className="text-xs font-bold text-slate-400 block mt-1">KH: {subValue}</span>
+            <span className="text-3xl font-black text-slate-800 dark:text-slate-100 tracking-tight block">{value}</span>
+            <span className="text-xs font-bold text-slate-400 dark:text-slate-500 block mt-1">KH: {subValue}</span>
           </div>
         </div>
 
         <div className="mt-4 flex items-center gap-1 text-[10px] font-bold">
           {percent >= 100 ? (
-            <span className="text-emerald-600 flex items-center gap-1 bg-emerald-50 px-2 py-0.5"><CheckCircle size={10} /> Đạt KH</span>
+            <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-0.5"><CheckCircle size={10} /> Đạt KH</span>
           ) : (
-            <span className="text-amber-600 flex items-center gap-1 bg-amber-50 px-2 py-0.5"><AlertCircle size={10} /> Cần nỗ lực</span>
+            <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1 bg-amber-50 dark:bg-amber-950/30 px-2 py-0.5"><AlertCircle size={10} /> Cần nỗ lực</span>
           )}
         </div>
       </div>
@@ -131,26 +136,26 @@ const UnitTile = ({ unit, onClick, isSelected }) => {
     <div
       onClick={onClick}
       className={`relative p-3 border-2 cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:shadow-lg flex flex-col justify-between h-28 group
-        ${isSelected ? 'border-blue-600 bg-blue-50/10 z-10' : 'border-slate-100 bg-white hover:border-blue-300'}
+        ${isSelected ? 'border-blue-600 dark:border-blue-500 bg-blue-50/10 z-10' : 'border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-blue-300 dark:hover:border-blue-700'}
       `}
     >
       <div className="flex justify-between items-start">
-        <span className={`font-black text-sm uppercase ${isSelected ? 'text-blue-700' : 'text-slate-700'}`}>{unit.code}</span>
+        <span className={`font-black text-sm uppercase ${isSelected ? 'text-blue-700 dark:text-blue-400' : 'text-slate-700 dark:text-slate-300'}`}>{unit.code}</span>
         {isHigh && <div className="w-2 h-2 bg-emerald-500 rotate-45"></div>} {/* Diamond shape */}
       </div>
 
       <div className="mt-2">
         <div className="flex justify-between items-end">
           <span className="text-[10px] text-slate-400 uppercase font-bold">Fiber</span>
-          <span className={`text-xl font-light ${isHigh ? 'text-emerald-600 font-bold' : 'text-slate-800'}`}>{unit.pctFiber}%</span>
+          <span className={`text-xl font-light ${isHigh ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-800 dark:text-slate-200'}`}>{unit.pctFiber}%</span>
         </div>
         {/* Progress Bar Mini */}
-        <div className="w-full bg-slate-100 h-1.5 mt-1 overflow-hidden">
+        <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 mt-1 overflow-hidden">
           <div className={`h-full ${isHigh ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${Math.min(unit.pctFiber, 100)}%` }}></div>
         </div>
       </div>
 
-      <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between text-[10px] text-slate-500">
+      <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-between text-[10px] text-slate-500 dark:text-slate-400">
         <span>TH: <b>{unit.actFiber}</b></span>
         <span>KH: {unit.planFiber}</span>
       </div>
@@ -161,6 +166,8 @@ const UnitTile = ({ unit, onClick, isSelected }) => {
 // --- MAIN DASHBOARD ---
 
 export default function UltimateDashboard() {
+  const { theme, setTheme } = useTheme();
+  const isDark = theme === 'dark';
   const [rawData, setRawData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedUnit, setSelectedUnit] = useState(null);
@@ -353,20 +360,20 @@ export default function UltimateDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
         <div className="flex flex-col items-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-          <div className="text-slate-500 font-medium">Đang tải dữ liệu báo cáo...</div>
+          <div className="text-slate-500 dark:text-slate-400 font-medium">Đang tải dữ liệu báo cáo...</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={`h-screen w-full p-8 flex flex-col bg-slate-50 font-sans text-slate-800 ${isFullScreen ? 'fixed inset-0 z-[100]' : ''}`}>
+    <div className={`h-screen w-full p-8 flex flex-col bg-slate-50 dark:bg-slate-950 font-sans text-slate-800 dark:text-slate-100 ${isFullScreen ? 'fixed inset-0 z-[100]' : ''}`}>
 
       {/* HEADER */}
-      <div className="bg-white border-b border-slate-200 shrink-0 shadow-sm">
+      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0 shadow-sm">
         <div className="w-full px-2">
           <div className="flex justify-between h-14 items-center">
             <div className="flex items-center gap-3">
@@ -374,41 +381,41 @@ export default function UltimateDashboard() {
                 <Activity size={18} />
               </div>
               <div>
-                <h1 className="text-base font-black text-slate-900 tracking-tighter uppercase">{REPORT_META.title}</h1>
+                <h1 className="text-base font-black text-slate-900 dark:text-slate-50 tracking-tighter uppercase">{REPORT_META.title}</h1>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <div className="flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded text-[10px] uppercase font-bold text-slate-600 border border-slate-200">
+                  <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[10px] uppercase font-bold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
                     <Calendar size={10} className="text-slate-400" />
                     <span>Tháng</span>
                     <select
                       value={month}
                       onChange={(e) => setMonth(parseInt(e.target.value))}
-                      className="bg-transparent outline-none text-blue-700 font-extrabold cursor-pointer hover:bg-slate-200 rounded px-1"
+                      className="bg-transparent outline-none text-blue-700 dark:text-blue-400 font-extrabold cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700/50 rounded px-1"
                     >
                       {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
-                        <option key={m} value={m}>{m}</option>
+                        <option key={m} value={m} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">{m}</option>
                       ))}
                     </select>
                   </div>
-                  <div className="flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded text-[10px] uppercase font-bold text-slate-600 border border-slate-200">
+                  <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[10px] uppercase font-bold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
                     <span>Năm</span>
                     <select
                       value={year}
                       onChange={(e) => setYear(parseInt(e.target.value))}
-                      className="bg-transparent outline-none text-blue-700 font-extrabold cursor-pointer hover:bg-slate-200 rounded px-1"
+                      className="bg-transparent outline-none text-blue-700 dark:text-blue-400 font-extrabold cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700/50 rounded px-1"
                     >
-                      <option value={2025}>2025</option>
-                      <option value={2026}>2026</option>
+                      <option value={2025} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">2025</option>
+                      <option value={2026} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">2026</option>
                     </select>
                   </div>
-                  <div className="flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded text-[10px] uppercase font-bold text-slate-600 border border-slate-200">
+                  <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[10px] uppercase font-bold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
                     <Clock size={10} className="text-slate-400" />
                     <select
                       value={refreshInterval}
                       onChange={(e) => setRefreshInterval(parseInt(e.target.value))}
-                      className="bg-transparent outline-none text-blue-700 font-extrabold cursor-pointer hover:bg-slate-200 rounded px-1"
+                      className="bg-transparent outline-none text-blue-700 dark:text-blue-400 font-extrabold cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700/50 rounded px-1"
                     >
                       {REFRESH_INTERVALS.map(interval => (
-                        <option key={interval.value} value={interval.value}>{interval.label}</option>
+                        <option key={interval.value} value={interval.value} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">{interval.label}</option>
                       ))}
                     </select>
                   </div>
@@ -416,31 +423,38 @@ export default function UltimateDashboard() {
               </div>
             </div>
 
-            <div className="flex bg-slate-100 p-1 rounded-none">
+            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-none">
               <button
                 onClick={() => setActiveTab('overview')}
-                className={`flex items-center gap-2 px-3 py-1 text-[11px] font-bold uppercase transition-all rounded-none ${activeTab === 'overview' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`flex items-center gap-2 px-3 py-1 text-[11px] font-bold uppercase transition-all rounded-none ${activeTab === 'overview' ? 'bg-white dark:bg-slate-950 text-blue-700 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}
               >
                 <LayoutDashboard size={14} /> Toàn cảnh
               </button>
               <button
                 onClick={() => setActiveTab('analysis')}
-                className={`flex items-center gap-2 px-3 py-1 text-[11px] font-bold uppercase transition-all rounded-none ${activeTab === 'analysis' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`flex items-center gap-2 px-3 py-1 text-[11px] font-bold uppercase transition-all rounded-none ${activeTab === 'analysis' ? 'bg-white dark:bg-slate-950 text-blue-700 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}
               >
                 <BarChart2 size={14} /> Phân tích
               </button>
               <button
                 onClick={() => setActiveTab('map')}
-                className={`flex items-center gap-2 px-3 py-1 text-[11px] font-bold uppercase transition-all rounded-none ${activeTab === 'map' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`flex items-center gap-2 px-3 py-1 text-[11px] font-bold uppercase transition-all rounded-none ${activeTab === 'map' ? 'bg-white dark:bg-slate-950 text-blue-700 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}
               >
                 <MapIcon size={14} /> Bản đồ
               </button>
               <button
                 onClick={() => setIsFullScreen(!isFullScreen)}
                 title={isFullScreen ? "Thoát toàn màn hình" : "Toàn màn hình"}
-                className={`flex items-center justify-center w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors border-l border-white`}
+                className={`flex items-center justify-center w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors border-l border-white dark:border-slate-700`}
               >
                 {isFullScreen ? <Minimize size={14} /> : <Maximize size={14} />}
+              </button>
+              <button
+                onClick={() => setTheme(isDark ? 'light' : 'dark')}
+                title={isDark ? "Chuyển sang chế độ sáng" : "Chuyển sang chế độ tối"}
+                className={`flex items-center justify-center w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors border-l border-white dark:border-slate-700`}
+              >
+                {isDark ? <Sun size={14} /> : <Moon size={14} />}
               </button>
             </div>
           </div>
@@ -475,14 +489,14 @@ export default function UltimateDashboard() {
         </div>
 
         {/* 2. TOOLBAR (FILTER & SORT) */}
-        <div className="bg-white border border-slate-200 p-2 shadow-sm flex flex-col md:flex-row justify-between items-center gap-2 sticky top-0 z-20">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-2 shadow-sm flex flex-col md:flex-row justify-between items-center gap-2 sticky top-0 z-20">
           {/* Search */}
           <div className="relative w-full md:w-64">
             <Search size={16} className="absolute left-3 top-2.5 text-slate-400" />
             <input
               type="text"
               placeholder="Tìm đơn vị..."
-              className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 focus:border-blue-500 focus:ring-0 rounded-none bg-slate-50 focus:bg-white transition-colors outline-none"
+              className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 dark:border-slate-700 focus:border-blue-500 focus:ring-0 rounded-none bg-slate-50 dark:bg-slate-950 focus:bg-white dark:focus:bg-slate-900 transition-colors outline-none dark:text-slate-200"
               value={filterText}
               onChange={(e) => setFilterText(e.target.value)}
             />
@@ -490,18 +504,18 @@ export default function UltimateDashboard() {
 
           <div className="flex flex-wrap gap-2 w-full md:w-auto items-center">
             {/* Status Filter */}
-            <div className="flex bg-slate-100 p-1 rounded-none">
+            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-none">
               <button
                 onClick={() => setFilterStatus('all')}
-                className={`px-3 py-1.5 text-xs font-bold ${filterStatus === 'all' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}
+                className={`px-3 py-1.5 text-xs font-bold ${filterStatus === 'all' ? 'bg-white dark:bg-slate-950 shadow text-slate-800 dark:text-slate-200' : 'text-slate-500 dark:text-slate-400'}`}
               >Tất cả</button>
               <button
                 onClick={() => setFilterStatus('achieved')}
-                className={`px-3 py-1.5 text-xs font-bold ${filterStatus === 'achieved' ? 'bg-white shadow text-emerald-700' : 'text-slate-500'}`}
+                className={`px-3 py-1.5 text-xs font-bold ${filterStatus === 'achieved' ? 'bg-white dark:bg-slate-950 shadow text-emerald-700 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}
               >Đạt KH</button>
               <button
                 onClick={() => setFilterStatus('not_reached')}
-                className={`px-3 py-1.5 text-xs font-bold ${filterStatus === 'not_reached' ? 'bg-white shadow text-amber-700' : 'text-slate-500'}`}
+                className={`px-3 py-1.5 text-xs font-bold ${filterStatus === 'not_reached' ? 'bg-white dark:bg-slate-950 shadow text-amber-700 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'}`}
               >Chưa đạt</button>
             </div>
 
@@ -511,7 +525,7 @@ export default function UltimateDashboard() {
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-slate-400 uppercase mr-1">Sắp xếp:</span>
               <select
-                className="text-sm border border-slate-300 py-1.5 px-3 bg-white outline-none focus:border-blue-500"
+                className="text-sm border border-slate-300 dark:border-slate-700 py-1.5 px-3 bg-white dark:bg-slate-900 outline-none focus:border-blue-500 dark:text-slate-200"
                 value={sortKey}
                 onChange={(e) => setSortKey(e.target.value)}
               >
@@ -522,7 +536,7 @@ export default function UltimateDashboard() {
               </select>
               <button
                 onClick={() => setSortDir(prev => prev === 'asc' ? 'desc' : 'asc')}
-                className="p-1.5 border border-slate-300 bg-white hover:bg-slate-50 text-slate-600"
+                className="p-1.5 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300"
               >
                 {sortDir === 'desc' ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
               </button>
@@ -535,9 +549,9 @@ export default function UltimateDashboard() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
             {/* LEFT: RANKING CHART (Updated with processed data) */}
-            <div className="lg:col-span-2 bg-white p-5 border border-slate-200 shadow-sm h-[500px] flex flex-col">
+            <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-5 border border-slate-200 dark:border-slate-800 shadow-sm h-[500px] flex flex-col">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="font-bold text-slate-800 flex items-center gap-2">
+                <h2 className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                   <TrendingUp size={18} className="text-blue-500" />
                   Xếp hạng Hiệu quả (Fiber & MyTV)
                 </h2>
@@ -551,12 +565,12 @@ export default function UltimateDashboard() {
                   <ComposedChart
                     data={processedData}
                     margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                  >      <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="code" tick={{ fontSize: 10, fontWeight: 'bold' }} interval={0} />
-                    <YAxis tick={{ fontSize: 10 }} />
+                  >      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? "#334155" : "#e2e8f0"} />
+                    <XAxis dataKey="code" tick={{ fontSize: 10, fontWeight: 'bold', fill: isDark ? "#94a3b8" : "#666" }} interval={0} />
+                    <YAxis tick={{ fontSize: 10, fill: isDark ? "#94a3b8" : "#666" }} />
                     <Tooltip
-                      contentStyle={{ borderRadius: 0, border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                      cursor={{ fill: '#f1f5f9' }}
+                      contentStyle={{ borderRadius: 0, border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', backgroundColor: isDark ? '#1e293b' : '#fff', color: isDark ? '#f1f5f9' : '#1e293b' }}
+                      cursor={{ fill: isDark ? '#334155' : '#f1f5f9' }}
                     />
                     <Bar dataKey="actFiber" name="Fiber" fill="#3b82f6" barSize={12} radius={[2, 2, 0, 0]} onClick={(data) => setSelectedUnit(data)}>
                       <LabelList dataKey="actFiber" position="top" style={{ fontSize: '9px', fill: '#64748b' }} />
@@ -571,24 +585,24 @@ export default function UltimateDashboard() {
             </div>
 
             {/* RIGHT: UNIT DETAIL (RADAR) */}
-            <div className="bg-white p-5 shadow-lg border-t-4 border-blue-500 flex flex-col border border-slate-200">
+            <div className="bg-white dark:bg-slate-900 p-5 shadow-lg border-t-4 border-blue-500 flex flex-col border border-slate-200 dark:border-slate-800">
               {selectedUnit ? (
                 <>
                   <div className="flex justify-between items-start mb-2">
                     <div>
-                      <h2 className="font-bold text-lg text-slate-800">{selectedUnit.name}</h2>
-                      <span className="text-xs bg-slate-100 px-2 py-0.5 rounded text-slate-500 font-mono border border-slate-200">{selectedUnit.code}</span>
+                      <h2 className="font-bold text-lg text-slate-800 dark:text-slate-100">{selectedUnit.name}</h2>
+                      <span className="text-xs bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-500 dark:text-slate-400 font-mono border border-slate-200 dark:border-slate-700">{selectedUnit.code}</span>
                     </div>
                     <div className="text-right">
-                      <div className="text-3xl font-black text-blue-600">{selectedUnit.totalAct}</div>
-                      <div className="text-[10px] uppercase text-slate-500">Tổng PTM</div>
+                      <div className="text-3xl font-black text-blue-600 dark:text-blue-500">{selectedUnit.totalAct}</div>
+                      <div className="text-[10px] uppercase text-slate-500 dark:text-slate-400">Tổng PTM</div>
                     </div>
                   </div>
 
                   <div className="flex-1 min-h-[250px] relative">
                     <ResponsiveContainer width="100%" height="100%">
                       <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
-                        <PolarGrid stroke="#e2e8f0" />
+                        <PolarGrid stroke={isDark ? "#334155" : "#e2e8f0"} />
                         <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 10, fontWeight: 'bold' }} />
                         <PolarRadiusAxis angle={30} domain={[0, 150]} tick={false} axisLine={false} />
                         <Radar
@@ -608,13 +622,13 @@ export default function UltimateDashboard() {
                           fill="#94a3b8"
                           fillOpacity={0.1}
                         />
-                        <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', color: '#1e293b', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} itemStyle={{ color: '#1e293b' }} />
+                        <Tooltip contentStyle={{ backgroundColor: isDark ? '#1e293b' : '#fff', border: isDark ? '1px solid #334155' : '1px solid #e2e8f0', color: isDark ? '#f1f5f9' : '#1e293b', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} itemStyle={{ color: isDark ? '#f1f5f9' : '#1e293b' }} />
                       </RadarChart>
                     </ResponsiveContainer>
                   </div>
 
                   {/* Service Mix Donut */}
-                  <div className="h-32 mt-4 border-t border-slate-100 pt-3 flex items-center">
+                  <div className="h-32 mt-4 border-t border-slate-100 dark:border-slate-800 pt-3 flex items-center">
                     <div className="w-1/2 h-full">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
@@ -629,7 +643,7 @@ export default function UltimateDashboard() {
                               <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
                             ))}
                           </Pie>
-                          <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', fontSize: '10px', color: '#1e293b' }} itemStyle={{ color: '#1e293b' }} />
+                          <Tooltip contentStyle={{ backgroundColor: isDark ? '#1e293b' : '#fff', border: isDark ? '1px solid #334155' : '1px solid #e2e8f0', fontSize: '10px', color: isDark ? '#f1f5f9' : '#1e293b' }} itemStyle={{ color: isDark ? '#f1f5f9' : '#1e293b' }} />
                         </PieChart>
                       </ResponsiveContainer>
                     </div>
@@ -639,7 +653,7 @@ export default function UltimateDashboard() {
                         <div key={idx} className="flex justify-between items-center">
                           <div className="flex items-center gap-1">
                             <div className="w-2 h-2" style={{ backgroundColor: item.color }}></div>
-                            <span className="text-slate-300">{item.name}</span>
+                            <span className="text-slate-300 dark:text-slate-400">{item.name}</span>
                           </div>
                           <span className="font-bold">{item.value}</span>
                         </div>
@@ -659,17 +673,17 @@ export default function UltimateDashboard() {
         {/* 4. ANALYSIS TAB CONTENT (Alternative View) */}
         {activeTab === 'analysis' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-white p-5 border border-slate-200 shadow-sm">
-              <h2 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <div className="bg-white dark:bg-slate-900 p-5 border border-slate-200 dark:border-slate-800 shadow-sm">
+              <h2 className="font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2">
                 <Target size={18} className="text-red-500" />
                 Ma trận Hiệu quả
               </h2>
               <div className="h-[400px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 10 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" dataKey="pctFiber" name="Fiber %" unit="%" domain={['auto', 'auto']} label={{ value: 'Fiber %', position: 'bottom', offset: 0 }} />
-                    <YAxis type="number" dataKey="pctMyTV" name="MyTV %" unit="%" domain={['auto', 'auto']} label={{ value: 'MyTV %', angle: -90, position: 'insideLeft' }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#334155" : "#ccc"} />
+                    <XAxis type="number" dataKey="pctFiber" name="Fiber %" unit="%" domain={['auto', 'auto']} label={{ value: 'Fiber %', position: 'bottom', offset: 0, fill: isDark ? "#94a3b8" : "#666" }} tick={{ fill: isDark ? "#94a3b8" : "#666" }} />
+                    <YAxis type="number" dataKey="pctMyTV" name="MyTV %" unit="%" domain={['auto', 'auto']} label={{ value: 'MyTV %', angle: -90, position: 'insideLeft', fill: isDark ? "#94a3b8" : "#666" }} tick={{ fill: isDark ? "#94a3b8" : "#666" }} />
                     <ZAxis type="number" dataKey="totalAct" range={[60, 600]} name="Tổng PTM" />
                     <Tooltip cursor={{ strokeDasharray: '3 3' }}
                       content={({ payload }) => {
@@ -702,18 +716,18 @@ export default function UltimateDashboard() {
               </div>
             </div>
 
-            <div className="bg-white p-5 border border-slate-200 shadow-sm">
-              <h2 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <div className="bg-white dark:bg-slate-900 p-5 border border-slate-200 dark:border-slate-800 shadow-sm">
+              <h2 className="font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2">
                 <Users size={18} className="text-orange-500" />
                 Cơ cấu nguồn lực bán hàng
               </h2>
               <div className="h-[400px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={processedData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                    <XAxis type="number" />
-                    <YAxis type="category" dataKey="code" tick={{ fontSize: 10, fontWeight: 'bold' }} width={30} />
-                    <Tooltip />
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={isDark ? "#334155" : "#ccc"} />
+                    <XAxis type="number" tick={{ fill: isDark ? "#94a3b8" : "#666" }} />
+                    <YAxis type="category" dataKey="code" tick={{ fontSize: 10, fontWeight: 'bold', fill: isDark ? "#94a3b8" : "#666" }} width={30} />
+                    <Tooltip contentStyle={{ backgroundColor: isDark ? '#1e293b' : '#fff', borderColor: isDark ? '#334155' : '#ccc', color: isDark ? '#f1f5f9' : '#000' }} />
                     <Legend wrapperStyle={{ fontSize: '11px' }} />
                     <Bar dataKey="channel_kt" name="NVKT" stackId="a" fill="#0ea5e9">
                       <LabelList dataKey="channel_kt" position="center" style={{ fontSize: '9px', fill: '#fff' }} />
@@ -733,8 +747,8 @@ export default function UltimateDashboard() {
 
         {/* 6. MAP TAB CONTENT */}
         {activeTab === 'map' && (
-          <div className="bg-white p-5 border border-slate-200 shadow-sm h-[600px] relative">
-            <h2 className="font-bold text-slate-800 mb-4 flex items-center gap-2 absolute top-5 left-5 z-10 bg-white/80 backdrop-blur-sm p-2 rounded shadow-sm">
+          <div className="bg-white dark:bg-slate-900 p-5 border border-slate-200 dark:border-slate-800 shadow-sm h-[600px] relative">
+            <h2 className="font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2 absolute top-5 left-5 z-10 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm p-2 rounded shadow-sm">
               <MapIcon size={18} className="text-emerald-500" />
               Bản đồ Phủ sóng & Thị phần
             </h2>
@@ -758,7 +772,7 @@ export default function UltimateDashboard() {
                   },
                   mapColorScheme: 'signal', // Corrected from 'heatmap'
                   mapDisplayMode: 'heatmap', // Corrected from 'choropleth'
-                  tooltipTheme: 'light'
+                  tooltipTheme: isDark ? 'dark' : 'light'
                 }
               }}
               height="100%"
@@ -767,9 +781,9 @@ export default function UltimateDashboard() {
         )}
 
         {/* 5. TILE GRID (Always visible list) */}
-        <div className="bg-white border border-slate-200 shadow-sm p-5">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-5">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="font-bold text-slate-800 flex items-center gap-2">
+            <h2 className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
               <Grid size={18} className="text-slate-500" />
               Danh sách Đơn vị ({processedData.length})
             </h2>
@@ -787,7 +801,7 @@ export default function UltimateDashboard() {
               ))}
             </div>
           ) : (
-            <div className="text-center py-10 text-slate-400 italic bg-slate-50">
+            <div className="text-center py-10 text-slate-400 italic bg-slate-50 dark:bg-slate-950">
               Không tìm thấy dữ liệu phù hợp với bộ lọc.
             </div>
           )}

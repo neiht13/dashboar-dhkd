@@ -1,5 +1,7 @@
 "use client"
 
+import * as React from "react"
+import { Slot } from "@radix-ui/react-slot"
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip"
 
 import { cn } from "@/lib/utils"
@@ -25,8 +27,24 @@ function Tooltip({ ...props }: TooltipPrimitive.Root.Props) {
   )
 }
 
-function TooltipTrigger({ ...props }: TooltipPrimitive.Trigger.Props) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
+type TooltipTriggerProps = TooltipPrimitive.Trigger.Props & {
+  asChild?: boolean
+  children?: React.ReactNode
+}
+
+function TooltipTrigger({ asChild = false, children, ...props }: TooltipTriggerProps) {
+  if (asChild) {
+    return (
+      <TooltipPrimitive.Trigger data-slot="tooltip-trigger" render={<Slot />} {...props}>
+        {children}
+      </TooltipPrimitive.Trigger>
+    )
+  }
+  return (
+    <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props}>
+      {children}
+    </TooltipPrimitive.Trigger>
+  )
 }
 
 function TooltipContent({

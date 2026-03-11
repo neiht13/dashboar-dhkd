@@ -23,6 +23,8 @@ import {
     Bell,
     History,
     Shield,
+    HardDrive,
+    Table2,
 } from "lucide-react";
 import {
     Tooltip,
@@ -45,19 +47,14 @@ const mainNavItems: NavItem[] = [
         icon: <LayoutDashboard className="h-5 w-5" />,
     },
     {
-        title: "Thiết kế biểu đồ",
-        href: "/charts/new",
+        title: "KPI Nhân viên",
+        href: "/kpi-nhanvien",
         icon: <BarChart3 className="h-5 w-5" />,
     },
     {
-        title: "Thư viện biểu đồ",
-        href: "/charts",
-        icon: <FolderKanban className="h-5 w-5" />,
-    },
-    {
-        title: "Dữ liệu",
-        href: "/database",
-        icon: <Database className="h-5 w-5" />,
+        title: "Nguồn dữ liệu",
+        href: "/data-sources",
+        icon: <HardDrive className="h-5 w-5" />,
     },
 ];
 

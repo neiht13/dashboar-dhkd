@@ -6,19 +6,23 @@ import {
     Scatter,
     XAxis,
     YAxis,
+    ZAxis,
     CartesianGrid,
-    Tooltip,
-    Legend,
-    ResponsiveContainer,
+    ReferenceLine,
 } from 'recharts';
 import type { CartesianChartProps } from '@/types/chart';
-import { getTooltipComponent } from '../shared/ChartTooltip';
-import { createLegendRenderer } from '../shared/ChartLegend';
-import { 
-    getFieldColor, 
-    formatDataLabel, 
+import {
+    ChartContainer,
+    ChartTooltip,
+    ChartTooltipContent,
+    ChartLegend,
+    ChartLegendContent,
+} from '@/components/ui/chart';
+import {
+    getFieldColor,
+    formatDataLabel,
     defaultAnimationConfig,
-    buildLegendColorMap 
+    buildShadcnChartConfig,
 } from '../utils/chart-utils';
 
 export function ScatterChartComponent({
@@ -26,6 +30,7 @@ export function ScatterChartComponent({
     config,
     width = "100%",
     height = "100%",
+    onChartClick,
     xAxisKey,
     yAxisKeys,
     styleProps,
@@ -33,53 +38,95 @@ export function ScatterChartComponent({
     yAxisFieldColors,
 }: CartesianChartProps) {
     const colors = styleProps.colors;
-    const TooltipComponent = getTooltipComponent(styleProps.tooltipTheme);
-    const renderLegend = createLegendRenderer(
-        buildLegendColorMap(yAxisKeys, yAxisFieldColors, colors),
-        yAxisFieldLabels
+    const chartStyle = config.style;
+    const zAxisKey = chartStyle?.zAxisKey as string | undefined;
+
+    const chartConfig = React.useMemo(
+        () => buildShadcnChartConfig(yAxisKeys, yAxisFieldLabels, yAxisFieldColors, colors),
+        [yAxisKeys, yAxisFieldLabels, yAxisFieldColors, colors]
     );
-    
-    const yKey = yAxisKeys[0] || 'value';
+
+    const handleClick = React.useCallback((entry: unknown) => {
+        if (!onChartClick) return;
+        const payload = (entry as { payload?: Record<string, unknown> })?.payload || (entry as Record<string, unknown>);
+        if (payload) onChartClick(payload);
+    }, [onChartClick]);
+
+    // Calculate average for reference lines
+    const avgX = React.useMemo(() => {
+        const values = data.map(d => Number(d[xAxisKey]) || 0);
+        return values.length > 0 ? values.reduce((s, v) => s + v, 0) / values.length : 0;
+    }, [data, xAxisKey]);
+
+    const avgY = React.useMemo(() => {
+        if (!yAxisKeys[0]) return 0;
+        const values = data.map(d => Number(d[yAxisKeys[0]]) || 0);
+        return values.length > 0 ? values.reduce((s, v) => s + v, 0) / values.length : 0;
+    }, [data, yAxisKeys]);
 
     return (
-        <ResponsiveContainer width={width} height={height}>
-            <ScatterChart margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
+        <ChartContainer config={chartConfig} className="h-full w-full">
+            <ScatterChart
+                accessibilityLayer
+                margin={{ top: 8, right: 12, bottom: 8, left: 8 }}
+            >
                 {styleProps.showGrid && (
-                    <CartesianGrid strokeDasharray="0" stroke="#E2E8F0" />
+                    <CartesianGrid vertical={false} />
                 )}
-                
+
                 <XAxis
                     dataKey={xAxisKey}
-                    name={xAxisKey}
-                    tick={{ fontSize: 11, fill: "#64748B", fontWeight: 500 }}
-                    axisLine={{ stroke: "#E2E8F0" }}
+                    type="number"
                     tickLine={false}
-                />
-                
-                <YAxis
-                    dataKey={yKey}
-                    name={yKey}
-                    tickFormatter={(v) => formatDataLabel(v, styleProps.dataLabelFormat)}
-                    tick={{ fontSize: 11, fill: "#64748B", fontWeight: 500 }}
                     axisLine={false}
+                    tickMargin={8}
+                    tickFormatter={(v) => formatDataLabel(v, styleProps.dataLabelFormat)}
+                />
+                <YAxis
+                    dataKey={yAxisKeys[0]}
+                    type="number"
                     tickLine={false}
-                    width={50}
+                    axisLine={false}
+                    tickMargin={8}
+                    width={80}
+                    tickFormatter={(v) => formatDataLabel(v, styleProps.dataLabelFormat)}
                 />
-                
-                {styleProps.showTooltip && <Tooltip content={<TooltipComponent />} />}
-                {styleProps.showLegend && (
-                    <Legend 
-                        content={renderLegend} 
-                        verticalAlign={styleProps.legendPosition as 'top' | 'bottom'} 
-                    />
+                {zAxisKey && (
+                    <ZAxis dataKey={zAxisKey} range={[40, 400]} />
                 )}
-                
-                <Scatter
-                    data={data}
-                    fill={getFieldColor(yKey, 0, yAxisFieldColors, colors)}
-                    {...defaultAnimationConfig}
-                />
+
+                {styleProps.showTooltip && <ChartTooltip content={<ChartTooltipContent />} />}
+                {styleProps.showLegend && (
+                    <ChartLegend content={<ChartLegendContent />} />
+                )}
+
+                {/* Average reference lines */}
+                <ReferenceLine x={avgX} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" strokeOpacity={0.5} />
+                <ReferenceLine y={avgY} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" strokeOpacity={0.5} />
+
+                {yAxisKeys.map((field, index) => {
+                    const fieldColor = getFieldColor(field, index, yAxisFieldColors, colors);
+                    return (
+                        <Scatter
+                            key={field}
+                            name={field}
+                            data={data}
+                            fill={fieldColor}
+                            onClick={handleClick}
+                            style={onChartClick ? { cursor: "pointer" } : undefined}
+                            {...defaultAnimationConfig}
+                            shape={(props: Record<string, unknown>) => {
+                                const { cx, cy, r } = props as { cx: number; cy: number; r: number };
+                                return (
+                                    <g>
+                                        <circle cx={cx} cy={cy} r={r || 5} fill={fieldColor} fillOpacity={0.6} stroke={fieldColor} strokeWidth={1.5} />
+                                    </g>
+                                );
+                            }}
+                        />
+                    );
+                })}
             </ScatterChart>
-        </ResponsiveContainer>
+        </ChartContainer>
     );
 }

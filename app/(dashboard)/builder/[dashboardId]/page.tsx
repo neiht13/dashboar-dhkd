@@ -4,15 +4,21 @@ import React, { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { DndContext, DragEndEvent, DragOverlay } from "@dnd-kit/core";
 import { Save, Eye, Edit3, ArrowLeft, History, Layout, Palette } from "lucide-react";
+import { useShallow } from "zustand/react/shallow";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DashboardGrid } from "@/components/dashboard-builder/DashboardGrid";
-import { WidgetLibrary } from "@/components/dashboard-builder/WidgetLibrary";
 import { DashboardHeader } from "@/components/dashboard-builder/DashboardHeader";
 import { EnhancedGlobalFilters } from "@/components/dashboard-builder/EnhancedGlobalFilters";
 import { RefreshStatus } from "@/components/dashboard-builder/RefreshStatus";
+import { RibbonToolbar } from "@/components/dashboard-builder/RibbonToolbar";
+import { PageTabBar } from "@/components/dashboard-builder/PageTabBar";
+import { VisualizationPanel } from "@/components/dashboard-builder/panels/VisualizationPanel";
+import { PowerBIFilterPanel } from "@/components/dashboard-builder/panels/PowerBIFilterPanel";
+import { DataPanel } from "@/components/dashboard-builder/panels/DataPanel";
 import { useDashboardStore } from "@/stores/dashboard-store";
+import { useCrossFilterStore } from "@/stores/cross-filter-store";
 import { generateId } from "@/lib/utils";
 import {
     Dialog,
@@ -86,13 +92,34 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
         createDashboard,
         updateDashboard,
         addWidget,
+        updateWidget,
         saveDashboardToServer,
         fetchDashboard,
         isEditing,
         toggleEditing,
         isSaving,
         setIsSaving,
-    } = useDashboardStore();
+        showDataPanel,
+        setShowDataPanel,
+    } = useDashboardStore(
+        useShallow((state) => ({
+            dashboards: state.dashboards,
+            currentDashboard: state.currentDashboard,
+            setCurrentDashboard: state.setCurrentDashboard,
+            createDashboard: state.createDashboard,
+            updateDashboard: state.updateDashboard,
+            addWidget: state.addWidget,
+            updateWidget: state.updateWidget,
+            saveDashboardToServer: state.saveDashboardToServer,
+            fetchDashboard: state.fetchDashboard,
+            isEditing: state.isEditing,
+            toggleEditing: state.toggleEditing,
+            isSaving: state.isSaving,
+            setIsSaving: state.setIsSaving,
+            showDataPanel: state.showDataPanel,
+            setShowDataPanel: state.setShowDataPanel,
+        }))
+    );
 
     const [showNameDialog, setShowNameDialog] = useState(false);
     const [dashboardName, setDashboardName] = useState("");
@@ -102,7 +129,12 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
     const [lastDataUpdate, setLastDataUpdate] = useState<Date | null>(null);
 
     // Undo/Redo integration
-    const { initializeState, pushState } = useUndoRedoStore();
+    const { initializeState, pushState } = useUndoRedoStore(
+        useShallow((state) => ({
+            initializeState: state.initializeState,
+            pushState: state.pushState,
+        }))
+    );
 
     // Refresh data handler
     const handleRefreshData = async () => {
@@ -115,6 +147,8 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
     useEffect(() => {
         const loadDashboard = async () => {
             if (dashboardId === "new") {
+                setCurrentDashboard(null);
+                useCrossFilterStore.getState().clearAllFilters();
                 setShowNameDialog(true);
                 return;
             }
@@ -176,6 +210,7 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
 
     // Initialize undo/redo state when dashboard loads
     useEffect(() => {
+        if (dashboardId === "new") return;
         if (currentDashboard) {
             initializeState({
                 widgets: currentDashboard.widgets || [],
@@ -184,10 +219,11 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
                 description: currentDashboard.description,
             });
         }
-    }, [currentDashboard?.id]);
+    }, [dashboardId, currentDashboard?.id, initializeState, currentDashboard]);
 
     // Push state to history when widgets/layout change
     useEffect(() => {
+        if (dashboardId === "new") return;
         if (currentDashboard && currentDashboard.widgets.length > 0) {
             pushState({
                 widgets: currentDashboard.widgets,
@@ -196,7 +232,7 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
                 description: currentDashboard.description,
             });
         }
-    }, [currentDashboard?.widgets, currentDashboard?.layout]);
+    }, [dashboardId, currentDashboard?.widgets, currentDashboard?.layout, currentDashboard?.name, currentDashboard?.description, currentDashboard, pushState]);
 
     // Handle undo/redo restore
     const handleUndoRedo = () => {
@@ -316,11 +352,15 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
     };
 
     // Handle drag end - add widget when dropped on grid
+    // NOTE: data-field drops are handled by handleFieldDrop, not here
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
 
         if (over && over.id === "dashboard-grid" && active.data.current) {
             const widgetData = active.data.current;
+
+            // Skip data-field type - handled by handleFieldDrop
+            if (widgetData.type === "data-field") return;
             const id = generateId();
             let config: any = {};
             let w = 4;
@@ -402,8 +442,87 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
                 config,
                 layout: { i: id, x: freePosition.x, y: freePosition.y, w, h },
             });
+
+            // Auto-select the new widget for Power BI-style inline editing
+            if (widgetData.type === "chart") {
+                useDashboardStore.getState().setSelectedWidgetId(id);
+                // If it's a new empty chart (no data source), open Data tab
+                if (!widgetData.chart?.dataSource?.table) {
+                    useDashboardStore.getState().setRightPanelTab('data');
+                } else {
+                    useDashboardStore.getState().setRightPanelTab('build');
+                }
+            }
         }
     };
+
+    if (dashboardId === "new") {
+        return (
+            <>
+                <Header
+                    title="Trình xây dựng Dashboard"
+                    subtitle="Tạo mới dashboard"
+                    showDatePicker={false}
+                    showSearch={false}
+                    actions={
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => router.push("/")}
+                                className="gap-2 rounded-none font-bold"
+                            >
+                                <ArrowLeft className="h-4 w-4" />
+                                Quay lại
+                            </Button>
+                        </div>
+                    }
+                />
+
+                <div className="flex-1 flex items-center justify-center bg-[#F8FAFC]">
+                    <div className="text-center">
+                        <p className="text-lg text-[#64748B]">Đang khởi tạo dashboard mới...</p>
+                    </div>
+                </div>
+
+                <Dialog open={showNameDialog} onOpenChange={setShowNameDialog}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Tạo Dashboard Mới</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4 py-4">
+                            <div>
+                                <label className="text-sm font-medium text-[#0F172A] mb-2 block">
+                                    Tên Dashboard
+                                </label>
+                                <Input
+                                    placeholder="VD: Tổng quan Thuê bao"
+                                    value={dashboardName}
+                                    onChange={(e) => setDashboardName(e.target.value)}
+                                />
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium text-[#0F172A] mb-2 block">
+                                    Mô tả (tùy chọn)
+                                </label>
+                                <Input
+                                    placeholder="Mô tả ngắn về dashboard này"
+                                    value={dashboardDescription}
+                                    onChange={(e) => setDashboardDescription(e.target.value)}
+                                />
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => router.push("/")}>
+                                Hủy
+                            </Button>
+                            <Button onClick={handleCreateDashboard}>Tạo Dashboard</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            </>
+        );
+    }
 
     if (!currentDashboard && dashboardId !== "new") {
         return (
@@ -415,100 +534,210 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
         );
     }
 
-    return (
-        <>
-            <Header
-                title={currentDashboard?.name || "Trình xây dựng Dashboard"}
-                subtitle={isEditing ? "Đang chỉnh sửa" : "Xem trước"}
-                showDatePicker={false}
-                showSearch={false}
-                actions={
-                    <div className="flex items-center gap-2">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => router.push("/")}
-                            className="gap-2 rounded-none font-bold"
-                        >
-                            <ArrowLeft className="h-4 w-4" />
-                            Quay lại
-                        </Button>
+    // Handle drag end for field wells (Phase 6: DnD)
+    const handleFieldDrop = (event: DragEndEvent) => {
+        const { active, over } = event;
+        if (!over || !active.data.current) return;
 
-                        {/* Undo/Redo Controls */}
-                        {isEditing && (
-                            <UndoRedoControls
-                                onUndo={handleUndoRedo}
-                                onRedo={handleUndoRedo}
-                                size="sm"
-                            />
-                        )}
+        const overId = String(over.id);
+        const activeData = active.data.current;
 
-                        {/* Template Selector */}
-                        {isEditing && (
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setShowTemplateSelector(true)}
-                                className="gap-2 rounded-none font-bold"
-                            >
-                                <Layout className="h-4 w-4" />
-                                Template
-                            </Button>
-                        )}
+        // Handle field drops onto dashboard grid - create new chart
+        if (overId === "dashboard-grid" && activeData.type === "data-field") {
+            const field = activeData.field as string;
+            const table = activeData.table as string;
+            const fieldType = (activeData.fieldType as string || "").toLowerCase();
+            const isNumeric = fieldType.includes("int") || fieldType.includes("decimal") || fieldType.includes("float") || fieldType.includes("numeric") || fieldType.includes("money");
 
-                        {/* Version History */}
-                        {dashboardId !== "new" && (
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setShowVersionHistory(true)}
-                                className="gap-2 rounded-none font-bold"
-                            >
-                                <History className="h-4 w-4" />
-                                Lịch sử
-                            </Button>
-                        )}
+            const newId = generateId();
+            const existingLayouts = currentDashboard?.widgets
+                .map(w => w.layout)
+                .filter((l): l is LayoutItem => l !== undefined) || [];
+            const freePos = findFreePosition(existingLayouts, 6, 5);
 
-                        <Button
-                            variant={isEditing ? "secondary" : "outline"}
-                            size="sm"
-                            onClick={toggleEditing}
-                            className="gap-2 rounded-none font-bold"
-                        >
-                            {isEditing ? (
-                                <>
-                                    <Eye className="h-4 w-4" />
-                                    Xem trước
-                                </>
-                            ) : (
-                                <>
-                                    <Edit3 className="h-4 w-4" />
-                                    Chỉnh sửa
-                                </>
-                            )}
-                        </Button>
+            const newConfig: import("@/types").ChartConfig = {
+                name: `Biểu đồ - ${field}`,
+                type: "bar",
+                dataSource: {
+                    table,
+                    xAxis: isNumeric ? "" : field,
+                    yAxis: isNumeric ? [field] : [],
+                    aggregation: "sum",
+                },
+            };
 
-                        <Button
-                            size="sm"
-                            onClick={handleSave}
-                            disabled={isSaving}
-                            className="gap-2 rounded-none font-bold"
-                        >
-                            <Save className="h-4 w-4" />
-                            {isSaving ? "Đang lưu..." : "Lưu"}
-                        </Button>
-                    </div>
+            addWidget({
+                id: newId,
+                type: "chart" as WidgetType,
+                config: newConfig,
+                layout: { i: newId, x: freePos.x, y: freePos.y, w: 6, h: 5 },
+            });
+
+            useDashboardStore.getState().setSelectedWidgetId(newId);
+            useDashboardStore.getState().setRightPanelTab('build');
+            return;
+        }
+
+        // Handle field drops into field wells
+        if (overId.startsWith("field-well-") && activeData.type === "data-field") {
+            const wellId = overId.replace("field-well-", "");
+            const field = activeData.field as string;
+            const table = activeData.table as string;
+
+            const selectedId = useDashboardStore.getState().selectedWidgetId;
+            if (!selectedId) return;
+
+            const widget = currentDashboard?.widgets.find((w) => w.id === selectedId);
+            if (!widget || widget.type !== "chart") return;
+
+            const config = widget.config as import("@/types").ChartConfig;
+            const ds = config.dataSource || { table: "", xAxis: "", yAxis: [], aggregation: "sum" as const };
+
+            let updates: Partial<import("@/types").ChartConfig> = {};
+
+            switch (wellId) {
+                case "xAxis":
+                    updates = {
+                        dataSource: { ...ds, table: ds.table || table, xAxis: field },
+                    };
+                    break;
+                case "columnYAxis":
+                    if (!ds.yAxis?.includes(field)) {
+                        updates = {
+                            dataSource: { ...ds, table: ds.table || table, yAxis: [...(ds.yAxis || []), field] },
+                        };
+                        // For composed chart, explicitly mark as bar
+                        if (config.type === "composed") {
+                            updates.style = {
+                                ...config.style,
+                                composedFieldTypes: {
+                                    ...config.style?.composedFieldTypes,
+                                    [field]: "bar",
+                                },
+                            };
+                        }
+                    }
+                    break;
+                case "lineYAxis": {
+                    const existingSecondary = config.style?.secondaryYAxisFields || [];
+                    if (!existingSecondary.includes(field)) {
+                        // Also add to yAxis if not there
+                        const newYAxis = ds.yAxis?.includes(field) ? ds.yAxis : [...(ds.yAxis || []), field];
+                        updates = {
+                            dataSource: { ...ds, table: ds.table || table, yAxis: newYAxis },
+                            style: {
+                                ...config.style,
+                                secondaryYAxis: true,
+                                secondaryYAxisFields: [...existingSecondary, field],
+                                composedFieldTypes: {
+                                    ...config.style?.composedFieldTypes,
+                                    [field]: "line",
+                                },
+                            },
+                        };
+                        // Auto-switch to composed if needed
+                        if (config.type === "bar" || config.type === "line") {
+                            updates.type = "composed";
+                        }
+                    }
+                    break;
                 }
+                case "legend": {
+                    updates = {
+                        dataSource: { ...ds, table: ds.table || table, groupBy: field },
+                    };
+                    break;
+                }
+                case "tooltips": {
+                    const existingTooltips = config.fieldWells?.tooltipFields || [];
+                    if (!existingTooltips.includes(field)) {
+                        updates = {
+                            fieldWells: {
+                                ...config.fieldWells,
+                                tooltipFields: [...existingTooltips, field],
+                            },
+                        };
+                    }
+                    break;
+                }
+            }
+
+            if (Object.keys(updates).length > 0) {
+                updateWidget(selectedId, {
+                    config: { ...config, ...updates },
+                });
+            }
+            return;
+        }
+
+        // Handle field drops into filter sections
+        if (overId.startsWith("filter-section-") && activeData.type === "data-field") {
+            const level = overId.replace("filter-section-", "") as "visual" | "page" | "report";
+            const field = activeData.field as string;
+            const newFilter = {
+                id: generateId(),
+                field,
+                level,
+                filterType: "basic" as const,
+                operator: "in" as const,
+                values: [] as (string | number)[],
+                isActive: true,
+            };
+
+            if (level === "visual") {
+                // Add to selected widget's visual filters
+                const selectedId = useDashboardStore.getState().selectedWidgetId;
+                if (!selectedId) return;
+                const widget = currentDashboard?.widgets.find((w) => w.id === selectedId);
+                if (!widget || widget.type !== "chart") return;
+                const chartCfg = widget.config as import("@/types").ChartConfig;
+                updateWidget(selectedId, {
+                    config: {
+                        ...chartCfg,
+                        visualFilters: [...(chartCfg.visualFilters || []), newFilter],
+                    },
+                });
+            } else if (level === "page") {
+                if (currentDashboard) {
+                    updateDashboard(currentDashboard.id, {
+                        pageFilters: [...(currentDashboard.pageFilters || []), newFilter],
+                    });
+                }
+            } else if (level === "report") {
+                if (currentDashboard) {
+                    updateDashboard(currentDashboard.id, {
+                        reportFilters: [...(currentDashboard.reportFilters || []), newFilter],
+                    });
+                }
+            }
+            return;
+        }
+    };
+
+    // Combined drag end handler
+    const handleCombinedDragEnd = (event: DragEndEvent) => {
+        // Try grid drop first
+        handleDragEnd(event);
+        // Then try field well drop
+        handleFieldDrop(event);
+    };
+
+    return (
+        <div className="flex flex-col h-full">
+            {/* Ribbon Toolbar (replaces Header) */}
+            <RibbonToolbar
+                onSave={handleSave}
+                onToggleVersionHistory={() => setShowVersionHistory(true)}
+                onToggleTemplateSelector={() => setShowTemplateSelector(true)}
+                dashboardId={dashboardId}
             />
 
-            <DndContext onDragEnd={handleDragEnd}>
+            <DndContext onDragEnd={handleCombinedDragEnd}>
+                {/* Main content area: Canvas | Filter Panel | Viz Panel | Data Panel */}
                 <div className="flex-1 flex overflow-hidden">
-                    {/* Widget Library (visible in edit mode) */}
-                    {isEditing && <WidgetLibrary />}
-
-                    {/* Main Canvas */}
-                    <div className="flex-1 flex flex-col overflow-hidden">
-                        {/* Dashboard Header with Title, Description, Tabs */}
+                    {/* Center: Canvas */}
+                    <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+                        {/* Dashboard Header with Title, Description */}
                         <DashboardHeader />
 
                         {/* Enhanced Global Filters */}
@@ -520,22 +749,45 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
                             lastUpdated={lastDataUpdate}
                         />
 
-                        {/* Grid Area */}
-                        <div className="flex-1 overflow-y-auto bg-[#F8FAFC]">
+                        {/* Grid Area with click-to-deselect */}
+                        <div
+                            className="flex-1 overflow-y-auto bg-[#F8FAFC] dark:bg-gray-950"
+                            onClick={(e) => {
+                                // Click on canvas background → deselect widget
+                                if (e.target === e.currentTarget) {
+                                    useDashboardStore.getState().setSelectedWidgetId(null);
+                                }
+                            }}
+                        >
                             <div className={
                                 currentDashboard?.layoutMode === 'full'
                                     ? "w-full px-4"
-                                    : "w-full px-[7.5%]"
+                                    : "w-full px-[3%]"
                             }>
-
-
                                 <DashboardGrid
                                     refreshTrigger={lastDataUpdate}
                                     onDataUpdated={setLastDataUpdate}
                                 />
                             </div>
                         </div>
+
+                        {/* Page Tab Bar (bottom) */}
+                        <PageTabBar />
                     </div>
+
+                    {/* Right panels (Power BI style) */}
+                    {isEditing && (
+                        <>
+                            {/* Filter Panel */}
+                            <PowerBIFilterPanel />
+                            {/* Visualization Panel (Build + Format) */}
+                            <VisualizationPanel />
+                            {/* Data Panel (datasets + draggable fields) - toggleable */}
+                            {showDataPanel && (
+                                <DataPanel onClose={() => setShowDataPanel(false)} />
+                            )}
+                        </>
+                    )}
                 </div>
             </DndContext>
 
@@ -592,6 +844,6 @@ export default function DashboardBuilderPage({ params }: BuilderPageProps) {
                 onOpenChange={setShowTemplateSelector}
                 onSelectTemplate={handleSelectTemplate}
             />
-        </>
+        </div>
     );
 }

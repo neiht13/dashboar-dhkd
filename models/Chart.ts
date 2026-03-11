@@ -28,6 +28,8 @@ export interface IDataSource {
     importedFileName?: string;
     // Drill-down
     drillDownLabelField?: string;
+    drillDownHierarchy?: string[];
+    crossFilterFields?: string[];
     // Connection
     connectionId?: string;
     // Resolution for time-based
@@ -120,6 +122,8 @@ const DataSourceSchema = new Schema({
     importedFileName: { type: String },
     // Drill-down
     drillDownLabelField: { type: String },
+    drillDownHierarchy: [{ type: String }],
+    crossFilterFields: [{ type: String }],
     // Connection
     connectionId: { type: String },
     // Resolution

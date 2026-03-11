@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
 import { jwtVerify } from 'jose';
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        if (dashboard.createdBy?.toString() !== user.userId && user.role !== 'admin') {
+        if ((dashboard.ownerId?.toString() || dashboard.createdBy?.toString()) !== user.userId && user.role !== 'admin') {
             return NextResponse.json(
                 { success: false, error: 'Access denied' },
                 { status: 403 }
@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Check ownership
-        if (dashboard.createdBy?.toString() !== user.userId && user.role !== 'admin') {
+        if ((dashboard.ownerId?.toString() || dashboard.createdBy?.toString()) !== user.userId && user.role !== 'admin') {
             return NextResponse.json(
                 { success: false, error: 'Access denied' },
                 { status: 403 }
@@ -199,3 +199,4 @@ export async function POST(request: NextRequest) {
         );
     }
 }
+

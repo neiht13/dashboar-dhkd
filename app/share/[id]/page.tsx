@@ -46,6 +46,11 @@ const REFRESH_INTERVALS = [
     { label: "30 phút", value: 1800 },
 ];
 
+const normalizeGroupBy = (groupBy?: string | string[]): string[] => {
+    if (!groupBy) return [];
+    return Array.isArray(groupBy) ? groupBy : [groupBy];
+};
+
 export default function ShareDashboardPage({ params }: SharePageProps) {
     const { id } = use(params);
     const router = useRouter();
@@ -303,9 +308,9 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                                 yFields.forEach(y => {
                                     groups[key][y] =
                                         aggregation === "min"
-                                            ? "Không xác định"
+                                            ? Number.POSITIVE_INFINITY
                                             : aggregation === "max"
-                                                ? -"Không xác định"
+                                                ? Number.NEGATIVE_INFINITY
                                                 : 0;
                                 });
                                 if (groupByArr.length > 0) {
@@ -328,15 +333,21 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
 
                         chartData = Object.values(groups).map((g: any) => {
                             const row: any = { ...g };
-                            if (aggregation === "avg") {
-                                config.dataSource.yAxis.forEach(y => {
-                                    row[y] = row[y] / g._count;
-                                });
-                            } else if (aggregation === "count") {
-                                config.dataSource.yAxis.forEach(y => {
-                                    row[y] = g._count;
-                                });
-                            }
+                        if (aggregation === "avg") {
+                            config.dataSource.yAxis.forEach(y => {
+                                row[y] = row[y] / g._count;
+                            });
+                        } else if (aggregation === "count") {
+                            config.dataSource.yAxis.forEach(y => {
+                                row[y] = g._count;
+                            });
+                        } else if (aggregation === "min" || aggregation === "max") {
+                            config.dataSource.yAxis.forEach(y => {
+                                if (!Number.isFinite(row[y])) {
+                                    row[y] = 0;
+                                }
+                            });
+                        }
                             delete row._count;
                             if (row._compositeLabel && xAxis) {
                                 row[xAxis] = row._compositeLabel;
@@ -428,12 +439,13 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
     // Fetch drill-down data for a specific chart
     const fetchDrillDownData = useCallback(async (
         config: ChartConfig,
-        drillFilters: DrillFilter[]
+        drillFilters: DrillFilter[],
+        nextGroupBy?: string
     ): Promise<Record<string, unknown>[]> => {
         // Handle import mode - filter imported data locally
         if (config.dataSource?.queryMode === 'import' && config.dataSource?.importedData) {
             const xAxisField = config.dataSource.xAxis;
-            const labelField = config.dataSource.drillDownLabelField || xAxisField;
+            const labelField = nextGroupBy || config.dataSource.drillDownLabelField || xAxisField;
 
             // Filter the imported data based on drill filters
             let filteredData = [...config.dataSource.importedData] as Record<string, unknown>[];
@@ -461,7 +473,9 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                     if (xAxisField) groups[key][xAxisField] = key; // Keep consistent
                     // Init Y fields
                     yAxisFields.forEach(y => {
-                        groups[key][y] = agg === 'min' ? "Không xác định" : (agg === 'max' ? -"Không xác định" : 0);
+                        groups[key][y] = agg === 'min'
+                            ? Number.POSITIVE_INFINITY
+                            : (agg === 'max' ? Number.NEGATIVE_INFINITY : 0);
                     });
                 }
                 groups[key]._count++;
@@ -488,6 +502,12 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                     yAxisFields.forEach(y => {
                         row[y] = g._count;
                     });
+                } else if (agg === 'min' || agg === 'max') {
+                    yAxisFields.forEach(y => {
+                        if (!Number.isFinite(row[y])) {
+                            row[y] = 0;
+                        }
+                    });
                 }
                 delete row._count;
                 return {
@@ -505,8 +525,7 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                 const xAxisField = config.dataSource.xAxis;
                 const yAxisFields = config.dataSource.yAxis || [];
                 const aggregation = config.dataSource.aggregation || 'sum';
-                const groupByFields = config.dataSource.groupBy;
-                const groupByArr = Array.isArray(groupByFields) ? groupByFields : groupByFields ? [groupByFields] : [];
+                const groupByArr = normalizeGroupBy(config.dataSource.groupBy);
 
                 // Modify the custom query to add WHERE conditions for drill filters
                 // IMPORTANT: We send filters as separate parameters to API for safe parameterized queries
@@ -572,11 +591,12 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
 
                     // Apply same aggregation logic using shared utility
                     if (xAxisField && yAxisFields.length > 0) {
+                        const targetXAxis = nextGroupBy || config.dataSource.drillDownLabelField || xAxisField;
                         chartData = processChartData(chartData, {
-                            xAxis: config.dataSource.drillDownLabelField || xAxisField,
+                            xAxis: targetXAxis,
                             yAxis: yAxisFields,
                             aggregation: aggregation as any,
-                            groupBy: groupByArr,
+                            groupBy: nextGroupBy ? undefined : groupByArr,
                             drillDownLabelField: config.dataSource.drillDownLabelField,
                         });
                     }
@@ -604,7 +624,7 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
             const yAxisFields = config.dataSource.yAxis;
             const xAxisField = config.dataSource.xAxis;
             // Use drillDownLabelField if configured, otherwise fall back to xAxis
-            const labelField = config.dataSource.drillDownLabelField || xAxisField;
+            const labelField = nextGroupBy || config.dataSource.drillDownLabelField || xAxisField;
 
             // Build WHERE conditions
             const whereConditions: string[] = [];
@@ -653,12 +673,11 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
             }).join(', ');
 
             // Build GROUP BY columns: X-axis + additional groupBy fields
-            const groupByFields = config.dataSource.groupBy;
-            const groupByArr = Array.isArray(groupByFields) ? groupByFields : groupByFields ? [groupByFields] : [];
+            const groupByArr = nextGroupBy ? [] : normalizeGroupBy(config.dataSource.groupBy);
 
             // Check if we have a drillDownLabelField - if so, we should GROUP BY that field for the next level
             // instead of the original xAxis (since we are filtering by xAxis)
-            const nextDrillLabel = config.dataSource.drillDownLabelField;
+            const nextDrillLabel = nextGroupBy || config.dataSource.drillDownLabelField;
             const effectiveGroupCol = (nextDrillLabel && nextDrillLabel !== xAxisField) ? nextDrillLabel : xAxisField;
 
             // Fields to select and group by
@@ -734,8 +753,8 @@ export default function ShareDashboardPage({ params }: SharePageProps) {
                     : baseChartConfig;
 
                 // Create drill-down handler for this chart
-                const handleChartDrillDown = async (filters: DrillFilter[]) => {
-                    return fetchDrillDownData(baseChartConfig, filters);
+                const handleChartDrillDown = async (filters: DrillFilter[], nextGroupBy?: string) => {
+                    return fetchDrillDownData(baseChartConfig, filters, nextGroupBy);
                 };
 
                 // Handle chart type change

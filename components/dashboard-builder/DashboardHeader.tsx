@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect } from "react";
 import { Plus, X, Edit2, Check, FileText, Share2, Link, Copy, ExternalLink, Lock } from "lucide-react";
@@ -49,14 +49,12 @@ export function DashboardHeader() {
         }
     }, [currentDashboard?.id, currentDashboard?.name, currentDashboard?.description]);
 
-    if (!currentDashboard) return null;
-
-    // Initialize tabs if empty and ensure "Tổng quan" exists
+    // Initialize tabs if empty and ensure "Tá»•ng quan" exists
     useEffect(() => {
         if (currentDashboard && (!currentDashboard.tabs || currentDashboard.tabs.length === 0)) {
             const overviewTab: DashboardTab = {
                 id: generateId(),
-                name: "Tổng quan",
+                name: "Tá»•ng quan",
                 widgets: currentDashboard.widgets || [],
                 layout: currentDashboard.layout || [],
             };
@@ -76,6 +74,8 @@ export function DashboardHeader() {
             });
         }
     }, [currentDashboard?.id]); // Only check when ID changes to avoid loops
+
+    if (!currentDashboard) return null;
 
     const tabs = currentDashboard.tabs || [];
     const activeTabId = currentDashboard.activeTabId;
@@ -256,7 +256,7 @@ export function DashboardHeader() {
                                     <Input
                                         value={description}
                                         onChange={(e) => setDescription(e.target.value)}
-                                        placeholder="Thêm mô tả..."
+                                        placeholder="ThÃªm mÃ´ táº£..."
                                         className="text-sm h-8 w-[400px]"
                                         autoFocus
                                         onKeyDown={(e) => e.key === "Enter" && handleSaveDescription()}
@@ -266,7 +266,7 @@ export function DashboardHeader() {
                             ) : (
                                 <>
                                     <p className="text-sm text-[#64748B]">
-                                        {currentDashboard.description || (isEditing ? "Click để thêm mô tả..." : "")}
+                                        {currentDashboard.description || (isEditing ? "Click Ä‘á»ƒ thÃªm mÃ´ táº£..." : "")}
                                     </p>
                                     {isEditing && !currentDashboard.description && (
                                         <Button
@@ -323,7 +323,7 @@ export function DashboardHeader() {
                             }}
                         >
                             <Share2 className="h-4 w-4" />
-                            Chia sẻ
+                            Chia sáº»
                         </Button>
 
                         {/* Delete Dashboard Button */}
@@ -332,14 +332,14 @@ export function DashboardHeader() {
                                 <PopoverTrigger>
                                     <Button variant="destructive" size="sm" className="gap-2 rounded-none font-bold">
                                         <Trash2 className="h-4 w-4" />
-                                        Xóa
+                                        XÃ³a
                                     </Button>
                                 </PopoverTrigger>
                                 <PopoverContent className="w-80" align="end">
                                     <div className="space-y-4">
-                                        <h4 className="font-medium text-slate-900">Xóa Dashboard?</h4>
+                                        <h4 className="font-medium text-slate-900">XÃ³a Dashboard?</h4>
                                         <p className="text-sm text-slate-500">
-                                            Hành động này không thể hoàn tác. Dashboard sẽ bị xóa vĩnh viễn.
+                                            HÃ nh Ä‘á»™ng nÃ y khÃ´ng thá»ƒ hoÃ n tÃ¡c. Dashboard sáº½ bá»‹ xÃ³a vÄ©nh viá»…n.
                                         </p>
                                         <div className="flex justify-end gap-2">
                                             {/* We can use a close button if needed, but clicking outside works too */}
@@ -355,7 +355,7 @@ export function DashboardHeader() {
                                                     });
                                                 }}
                                             >
-                                                Xác nhận xóa
+                                                XÃ¡c nháº­n xÃ³a
                                             </Button>
                                         </div>
                                     </div>
@@ -431,7 +431,7 @@ export function DashboardHeader() {
                                                     </PopoverTrigger>
                                                     <PopoverContent className="w-56 p-3" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
                                                         <div className="space-y-2">
-                                                            <h4 className="font-medium text-xs text-slate-900">Xóa Tab này?</h4>
+                                                            <h4 className="font-medium text-xs text-slate-900">XÃ³a Tab nÃ y?</h4>
                                                             <div className="flex justify-end gap-2">
                                                                 <Button
                                                                     variant="destructive"
@@ -439,7 +439,7 @@ export function DashboardHeader() {
                                                                     className="h-6 text-xs px-2"
                                                                     onClick={(e) => handleDeleteTab(tab.id, e)}
                                                                 >
-                                                                    Xác nhận
+                                                                    XÃ¡c nháº­n
                                                                 </Button>
                                                             </div>
                                                         </div>
@@ -462,7 +462,7 @@ export function DashboardHeader() {
                             onClick={handleAddTab}
                         >
                             <Plus className="h-4 w-4 mr-1" />
-                            Thêm tab
+                            ThÃªm tab
                         </Button>
                     )}
                 </div>
@@ -474,7 +474,7 @@ export function DashboardHeader() {
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <Share2 className="h-5 w-5" />
-                            Chia sẻ Dashboard
+                            Chia sáº» Dashboard
                         </DialogTitle>
                     </DialogHeader>
 
@@ -511,14 +511,14 @@ export function DashboardHeader() {
                         {!shareLink ? (
                             <div className="space-y-4">
                                 <p className="text-sm text-slate-600">
-                                    Chọn phương thức chia sẻ để tạo link mới.
+                                    Chá»n phÆ°Æ¡ng thá»©c chia sáº» Ä‘á»ƒ táº¡o link má»›i.
                                 </p>
                                 <div className="flex gap-4">
                                     <Button onClick={() => handleCreateShareLink()} className="flex-1" variant="outline">
-                                        Tạo Public Link
+                                        Táº¡o Public Link
                                     </Button>
                                     <Button onClick={() => handleCreateShareLink('jwt')} className="flex-1">
-                                        Tạo Secure Link
+                                        Táº¡o Secure Link
                                     </Button>
                                 </div>
                             </div>
@@ -534,7 +534,7 @@ export function DashboardHeader() {
                                         {shareLinkSecret && (
                                             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
                                                 <h4 className="text-sm font-semibold text-amber-800 mb-2 flex items-center gap-2">
-                                                    <Lock className="w-4 h-4" /> Secret Key (Lưu ngay, sẽ không hiển thị lại)
+                                                    <Lock className="w-4 h-4" /> Secret Key (LÆ°u ngay, sáº½ khÃ´ng hiá»ƒn thá»‹ láº¡i)
                                                 </h4>
                                                 <div className="flex gap-2">
                                                     <code className="flex-1 bg-white border border-amber-200 px-3 py-2 rounded text-xs font-mono break-all text-amber-900">
@@ -556,7 +556,7 @@ export function DashboardHeader() {
                                         )}
 
                                         <div className="space-y-2">
-                                            <label className="text-sm font-medium text-slate-700">Link chia sẻ</label>
+                                            <label className="text-sm font-medium text-slate-700">Link chia sáº»</label>
                                             <div className="flex items-center gap-2">
                                                 <div className="flex-1 flex items-center bg-[#F1F5F9] rounded-lg px-3 py-2">
                                                     <Link className="h-4 w-4 text-[#64748B] mr-2 flex-shrink-0" />
@@ -575,7 +575,7 @@ export function DashboardHeader() {
 
                                         {shareLinkSecret && (
                                             <div className="space-y-2 pt-2">
-                                                <label className="text-sm font-medium text-slate-700">Hướng dẫn tích hợp (Node.js)</label>
+                                                <label className="text-sm font-medium text-slate-700">HÆ°á»›ng dáº«n tÃ­ch há»£p (Node.js)</label>
                                                 <div className="bg-slate-900 rounded-lg p-3 overflow-x-auto">
                                                     <pre className="text-xs text-slate-300 font-mono">
                                                         {`const jwt = require('jsonwebtoken');
@@ -598,7 +598,7 @@ const embedUrl = \`\${dashUrl}&auth=\${token}\`;`}
                                             onClick={() => window.open(shareLink, '_blank')}
                                         >
                                             <ExternalLink className="h-4 w-4" />
-                                            Mở trong tab mới
+                                            Má»Ÿ trong tab má»›i
                                         </Button>
                                     </>
                                 )}
@@ -608,7 +608,7 @@ const embedUrl = \`\${dashUrl}&auth=\${token}\`;`}
 
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setShowShareDialog(false)}>
-                            Đóng
+                            ÄÃ³ng
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -616,3 +616,4 @@ const embedUrl = \`\${dashUrl}&auth=\${token}\`;`}
         </>
     );
 }
+

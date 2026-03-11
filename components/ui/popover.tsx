@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover"
+import { Slot } from "@radix-ui/react-slot"
 
 import { cn } from "@/lib/utils"
 
@@ -9,8 +10,24 @@ function Popover({ ...props }: PopoverPrimitive.Root.Props) {
   return <PopoverPrimitive.Root data-slot="popover" {...props} />
 }
 
-function PopoverTrigger({ ...props }: PopoverPrimitive.Trigger.Props) {
-  return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />
+type PopoverTriggerProps = PopoverPrimitive.Trigger.Props & {
+  asChild?: boolean
+  children?: React.ReactNode
+}
+
+function PopoverTrigger({ asChild = false, children, ...props }: PopoverTriggerProps) {
+  if (asChild) {
+    return (
+      <PopoverPrimitive.Trigger data-slot="popover-trigger" render={<Slot />} {...props}>
+        {children}
+      </PopoverPrimitive.Trigger>
+    )
+  }
+  return (
+    <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props}>
+      {children}
+    </PopoverPrimitive.Trigger>
+  )
 }
 
 function PopoverContent({

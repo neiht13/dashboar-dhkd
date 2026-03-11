@@ -17,9 +17,15 @@ import {
     DollarSign,
     Sparkles,
     Check,
-    Loader2
+    Loader2,
+    Wifi,
+    Activity,
+    MapPin,
+    Target,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/stores/auth-store';
+import { ALL_TEMPLATES } from '@/components/dashboards/dashboard-templates';
 
 interface Template {
     _id: string;
@@ -32,6 +38,11 @@ interface Template {
     isPublic: boolean;
     usageCount: number;
     tags: string[];
+    targetRoles?: string[];
+    persona?: string;
+    // Built-in template fields
+    isBuiltIn?: boolean;
+    tabs?: unknown[];
 }
 
 interface TemplateSelectorProps {
@@ -40,15 +51,46 @@ interface TemplateSelectorProps {
     onSelectTemplate: (template: Template) => Promise<void>;
 }
 
-const CATEGORY_CONFIG = {
+const CATEGORY_CONFIG: Record<string, { label: string; icon: React.ElementType }> = {
     all: { label: 'Tất cả', icon: LayoutDashboard },
-    analytics: { label: 'Analytics', icon: TrendingUp },
+    telecom: { label: 'Viễn thông', icon: Wifi },
     sales: { label: 'Bán hàng', icon: ShoppingCart },
-    marketing: { label: 'Marketing', icon: Megaphone },
-    operations: { label: 'Vận hành', icon: Settings },
-    finance: { label: 'Tài chính', icon: DollarSign },
+    kpi: { label: 'KPI', icon: TrendingUp },
+    general: { label: 'Tổng hợp', icon: Settings },
+    geographic: { label: 'Bản đồ', icon: MapPin },
+    analytics: { label: 'Analytics', icon: Activity },
     custom: { label: 'Tùy chỉnh', icon: Sparkles },
 };
+
+const ROLE_LABELS: Record<string, string> = {
+    admin: 'Lanh dao',
+    editor: 'Dieu hanh',
+    viewer: 'Kinh doanh',
+    user: 'Kinh doanh',
+};
+
+// Convert built-in templates to the Template interface
+function getBuiltInTemplates(): Template[] {
+    return ALL_TEMPLATES.map((t) => {
+        // Collect all widgets from all tabs
+        const allWidgets = t.tabs.flatMap((tab) => tab.widgets);
+        const allLayout = t.tabs.flatMap((tab) => tab.layout);
+
+        return {
+            _id: `builtin-${t.id}`,
+            name: t.name,
+            description: t.description,
+            category: t.category,
+            widgets: allWidgets,
+            layout: allLayout,
+            isPublic: true,
+            usageCount: 0,
+            tags: [t.category, 'built-in'],
+            isBuiltIn: true,
+            tabs: t.tabs,
+        };
+    });
+}
 
 export function TemplateSelector({ open, onOpenChange, onSelectTemplate }: TemplateSelectorProps) {
     const [templates, setTemplates] = useState<Template[]>([]);
@@ -58,6 +100,7 @@ export function TemplateSelector({ open, onOpenChange, onSelectTemplate }: Templ
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
     const [applying, setApplying] = useState(false);
+    const userRole = useAuthStore((state) => state.user?.role);
 
     useEffect(() => {
         if (open) {
@@ -88,13 +131,31 @@ export function TemplateSelector({ open, onOpenChange, onSelectTemplate }: Templ
     const fetchTemplates = async () => {
         setLoading(true);
         try {
-            const response = await fetch('/api/templates?includePrivate=true');
-            const data = await response.json();
-            if (data.success) {
-                setTemplates(data.data);
+            // Start with built-in templates (always available)
+            const builtIn = getBuiltInTemplates();
+
+            // Fetch remote templates from API
+            let remote: Template[] = [];
+            try {
+                const params = new URLSearchParams({ includePrivate: 'true' });
+                if (userRole) {
+                    params.set('role', userRole);
+                }
+                const response = await fetch(`/api/templates?${params.toString()}`);
+                const data = await response.json();
+                if (data.success) {
+                    remote = data.data;
+                }
+            } catch {
+                // API templates are optional - built-in always work
             }
+
+            // Merge: built-in first, then remote
+            setTemplates([...builtIn, ...remote]);
         } catch (error) {
             console.error('Error fetching templates:', error);
+            // At least show built-in templates
+            setTemplates(getBuiltInTemplates());
         } finally {
             setLoading(false);
         }
@@ -213,9 +274,29 @@ export function TemplateSelector({ open, onOpenChange, onSelectTemplate }: Templ
                                             )}
 
                                             <div className="flex items-center gap-2 mt-2 flex-wrap">
+                                                {template.isBuiltIn && (
+                                                    <Badge className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 hover:bg-blue-100">
+                                                        Mẫu có sẵn
+                                                    </Badge>
+                                                )}
                                                 <Badge variant="secondary" className="text-xs">
                                                     {template.widgets.length} widgets
                                                 </Badge>
+                                                {template.tabs && (template.tabs as unknown[]).length > 1 && (
+                                                    <Badge variant="outline" className="text-xs">
+                                                        {(template.tabs as unknown[]).length} trang
+                                                    </Badge>
+                                                )}
+                                                {template.targetRoles && template.targetRoles.length > 0 && (
+                                                    <Badge variant="outline" className="text-xs">
+                                                        {template.targetRoles.map((r) => ROLE_LABELS[r] || r).join(', ')}
+                                                    </Badge>
+                                                )}
+                                                {template.persona && (
+                                                    <Badge variant="outline" className="text-xs">
+                                                        {template.persona}
+                                                    </Badge>
+                                                )}
                                                 {template.usageCount > 0 && (
                                                     <Badge variant="outline" className="text-xs">
                                                         {template.usageCount} lượt dùng

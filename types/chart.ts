@@ -24,6 +24,7 @@ export interface BaseChartProps {
     config: ChartConfig;
     width?: number | string;
     height?: number | string;
+    onChartClick?: (payload: ChartDataPoint) => void;
 }
 
 export interface ChartStyleProps {
@@ -126,17 +127,37 @@ export interface ChartAnimationConfig {
 // ===========================================
 
 export const MODERN_CHART_COLORS = [
-    "#0066FF", // Primary Blue
-    "#8B5CF6", // Purple
-    "#10B981", // Emerald
-    "#F59E0B", // Amber
-    "#EF4444", // Red
-    "#06B6D4", // Cyan
-    "#EC4899", // Pink
-    "#14B8A6", // Teal
-    "#F97316", // Orange
-    "#6366F1", // Indigo
+    "#3B82F6", // Blue 500
+    "#8B5CF6", // Violet 500
+    "#10B981", // Emerald 500
+    "#F59E0B", // Amber 500
+    "#EF4444", // Red 500
+    "#06B6D4", // Cyan 500
+    "#EC4899", // Pink 500
+    "#14B8A6", // Teal 500
+    "#F97316", // Orange 500
+    "#6366F1", // Indigo 500
+    "#84CC16", // Lime 500
+    "#A855F7", // Purple 500
+    "#22D3EE", // Cyan 400
+    "#FB923C", // Orange 400
+    "#34D399", // Emerald 400
+    "#C084FC", // Purple 400
 ] as const;
+
+// Gradient pairs for each color (from, to)
+export const CHART_GRADIENT_PAIRS: [string, string][] = [
+    ["#3B82F6", "#1D4ED8"], // Blue
+    ["#8B5CF6", "#6D28D9"], // Violet
+    ["#10B981", "#059669"], // Emerald
+    ["#F59E0B", "#D97706"], // Amber
+    ["#EF4444", "#DC2626"], // Red
+    ["#06B6D4", "#0891B2"], // Cyan
+    ["#EC4899", "#DB2777"], // Pink
+    ["#14B8A6", "#0D9488"], // Teal
+    ["#F97316", "#EA580C"], // Orange
+    ["#6366F1", "#4F46E5"], // Indigo
+];
 
 // ===========================================
 // VIETNAMESE LABELS

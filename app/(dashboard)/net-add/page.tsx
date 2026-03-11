@@ -6,7 +6,7 @@ import { RouteGuard } from "@/components/security/RouteGuard";
 
 export default function NetAddPage() {
     const DashboardNetAdd = dynamic(
-        () => import("@/components/example2").then((mod) => mod.default),
+        () => import("@/components/dashboards/trangthaithuebao").then((mod) => mod.default),
         {
             ssr: false,
             loading: () => (

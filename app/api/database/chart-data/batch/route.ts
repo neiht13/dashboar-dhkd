@@ -14,7 +14,7 @@ interface BatchChartRequest {
         orderBy?: string;
         orderDirection?: string;
         limit?: number;
-        filters?: Array<{ field: string; operator: string; value: string | number }>;
+        filters?: Array<{ field: string; operator: string; value: string | number | string[] | number[] }>;
         connectionId?: string;
         queryMode?: 'simple' | 'custom' | 'import';
         customQuery?: string;
@@ -88,7 +88,53 @@ async function executeChartQuery(request: BatchChartRequest): Promise<{ widgetId
                 return { widgetId, data: [], error: validation.error };
             }
 
-            const result = await pool.request().query(validation.sanitizedQuery!);
+            const requestBuilder = pool.request();
+            let finalQuery = validation.sanitizedQuery!;
+
+            if (config.filters && Array.isArray(config.filters) && config.filters.length > 0) {
+                const whereConditions: string[] = [];
+
+                config.filters.forEach((filter: any, index: number) => {
+                    try {
+                        const sanitizedField = sanitizeIdentifier(filter.field);
+                        const paramName = `filterParam${index}`;
+                        const operator = filter.operator?.toUpperCase() || '=';
+                        const validOperators = ['=', '!=', '>', '<', '>=', '<=', 'LIKE', 'IN'];
+
+                        if (!validOperators.includes(operator)) {
+                            return;
+                        }
+
+                        if (operator === 'IN' && Array.isArray(filter.value)) {
+                            const inParams = filter.value
+                                .map((value: unknown, valueIndex: number) => {
+                                    const inParamName = `${paramName}_${valueIndex}`;
+                                    requestBuilder.input(inParamName, value);
+                                    return `@${inParamName}`;
+                                })
+                                .join(', ');
+
+                            if (inParams.length > 0) {
+                                whereConditions.push(`[${sanitizedField}] IN (${inParams})`);
+                            }
+                        } else {
+                            requestBuilder.input(paramName, filter.value);
+                            whereConditions.push(`[${sanitizedField}] ${operator} @${paramName}`);
+                        }
+                    } catch (fieldError) {
+                        logger.warn('Invalid custom query filter field', {
+                            field: filter.field,
+                            error: fieldError,
+                        });
+                    }
+                });
+
+                if (whereConditions.length > 0) {
+                    finalQuery = `SELECT * FROM (${finalQuery}) AS _filtered_sub WHERE ${whereConditions.join(' AND ')}`;
+                }
+            }
+
+            const result = await requestBuilder.query(finalQuery);
             return { widgetId, data: result.recordset };
         }
 

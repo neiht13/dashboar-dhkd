@@ -71,6 +71,9 @@ export interface DataSource {
   storedProcedureParams?: Record<string, unknown>;
   // Drill-down settings
   drillDownLabelField?: string; // Field to use as X-axis label when drilling down to detail
+  drillDownHierarchy?: string[]; // Multi-level drill dimensions, e.g. ['tinh', 'don_vi', 'nhan_vien']
+  crossFilterFields?: string[]; // Apply multi-dimensional cross-filter from clicked datapoint
+  resolution?: 'day' | 'month' | 'year';
   // Imported data (for queryMode 'import')
   importedData?: Record<string, unknown>[];
   importedFileName?: string;
@@ -82,6 +85,42 @@ export type ChartStylePreset = 'default' | 'glowing' | 'hatched' | 'highlighted'
 
 // Data label unit format types
 export type DataLabelFormat = 'full' | 'k' | 'tr' | 'ty';
+
+// Power BI-style Series Configuration
+export interface SeriesConfig {
+  field: string;
+  type: 'bar' | 'line' | 'area';
+  yAxisId: 'left' | 'right'; // primary or secondary Y-axis
+  color?: string;
+  name?: string;
+  showDataLabels?: boolean;
+  showMarkers?: boolean;
+}
+
+// Power BI-style Filter Levels
+export type FilterLevel = 'visual' | 'page' | 'report';
+
+export interface PowerBIFilter {
+  id: string;
+  field: string;
+  table?: string;
+  level: FilterLevel;
+  filterType: 'basic' | 'advanced' | 'relative-date' | 'top-n';
+  operator: '=' | '!=' | '>' | '<' | '>=' | '<=' | 'like' | 'in' | 'between';
+  values: (string | number)[];
+  isActive: boolean;
+  requireSingleSelection?: boolean;
+}
+
+// Power BI-style Field Well configuration
+export interface FieldWellConfig {
+  xAxis?: string;
+  columnYAxis?: string[];
+  lineYAxis?: string[];
+  legend?: string;
+  smallMultiples?: string;
+  tooltipFields?: string[];
+}
 
 // Extended Chart Style with new customization options
 export interface ChartStyle {
@@ -105,6 +144,8 @@ export interface ChartStyle {
     shadow?: boolean;
   };
   xAxisExclude?: string[]; // Values to exclude from X-axis
+  xAxisTickAngle?: number; // Rotation angle for X-axis ticks (0, -30, -45, -90)
+  xAxisTickFormat?: 'auto' | 'truncate' | 'short'; // Format for X-axis tick text
   composedFieldTypes?: Record<string, 'line' | 'bar'>; // For composed chart: which Y-axis fields are lines vs bars
   yAxisFieldLabels?: Record<string, string>; // Custom display names for Y-axis fields
   yAxisFieldColors?: Record<string, string>; // Custom colors for Y-axis fields
@@ -134,6 +175,18 @@ export interface ChartStyle {
   // Map Specific Styles
   mapDisplayMode?: 'heatmap' | 'category' | 'value' | 'coverage';
   mapColorScheme?: 'default' | 'blues' | 'greens' | 'reds' | 'purples' | 'signal';
+
+  // Power BI-style features
+  secondaryYAxis?: boolean; // Enable secondary Y-axis (right side)
+  secondaryYAxisLabel?: string;
+  secondaryYAxisFields?: string[]; // Fields that use secondary Y-axis
+  zoomSlider?: boolean; // Enable Recharts Brush for zoom
+  showMarkers?: boolean; // Show dot markers on line charts
+  markerSize?: number;
+  shadeArea?: boolean; // Shade area under lines
+  shadeAreaOpacity?: number;
+  seriesConfig?: SeriesConfig[]; // Per-series configuration for composed charts
+  plotAreaBackground?: string; // Custom plot area background color
 
   // Conditional Coloring (for bar charts)
   conditionalColoring?: {
@@ -217,6 +270,10 @@ export interface ChartConfig {
   annotations?: ChartAnnotationConfig[];
   forecast?: ForecastConfig;
   anomalyDetection?: AnomalyDetectionConfig;
+  // Power BI-style field wells
+  fieldWells?: FieldWellConfig;
+  // Power BI-style visual-level filters
+  visualFilters?: PowerBIFilter[];
   createdAt?: Date;
   updatedAt?: Date;
   userId?: string;
@@ -277,11 +334,30 @@ export interface Widget {
   layout: LayoutItem;
 }
 
+// Dashboard-level drilldown configuration
+export interface DashboardDrilldownConfig {
+  // Navigate to another page in same dashboard
+  targetTabId?: string;
+  // Navigate to another dashboard entirely
+  targetDashboardId?: string;
+  // Pass filter values when drilling down
+  passFilters?: {
+    sourceField: string;
+    targetField: string;
+  }[];
+  // Label shown on the drilldown action
+  label?: string;
+}
+
 export interface DashboardTab {
   id: string;
   name: string;
   widgets: Widget[];
   layout: LayoutItem[];
+  // Drilldown: which tab/dashboard to navigate to when drilling down from this tab
+  drilldown?: DashboardDrilldownConfig;
+  // Parent tab for back navigation
+  parentTabId?: string;
 }
 
 export interface Dashboard {
@@ -293,6 +369,9 @@ export interface Dashboard {
   tabs?: DashboardTab[];
   activeTabId?: string;
   layoutMode?: 'full' | 'box'; // full = 100% width, box = 85% width with margins
+  // Power BI-style filter levels
+  pageFilters?: PowerBIFilter[];
+  reportFilters?: PowerBIFilter[];
   createdAt: Date;
   updatedAt: Date;
   userId?: string;

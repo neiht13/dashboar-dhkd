@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useCallback, useMemo } from 'react';
 import { useCrossFilterStore, CrossFilter } from '@/stores/cross-filter-store';
+import { useShallow } from 'zustand/react/shallow';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { X, Filter } from 'lucide-react';
@@ -35,64 +36,95 @@ interface CrossFilterProviderProps {
     linkedChartIds?: string[]; // Charts that filter each other
 }
 
-export function CrossFilterProvider({ children, linkedChartIds }: CrossFilterProviderProps) {
-    const store = useCrossFilterStore();
+const AUTO_LINKED_GROUP_ID = 'dashboard-auto-linked-group';
 
-    // Link charts if provided
-    React.useEffect(() => {
-        if (linkedChartIds && linkedChartIds.length > 1) {
-            store.linkCharts(`group_${Date.now()}`, linkedChartIds);
-        }
+export function CrossFilterProvider({ children, linkedChartIds }: CrossFilterProviderProps) {
+    const {
+        setFilter: setStoreFilter,
+        clearFilter: clearStoreFilter,
+        clearAllFilters: clearAllStoreFilters,
+        getFiltersForChart: getFiltersForChartFromStore,
+        buildFilterQuery: buildFilterQueryFromStore,
+        linkCharts,
+        activeFilters,
+    } = useCrossFilterStore(
+        useShallow((state) => ({
+            setFilter: state.setFilter,
+            clearFilter: state.clearFilter,
+            clearAllFilters: state.clearAllFilters,
+            getFiltersForChart: state.getFiltersForChart,
+            buildFilterQuery: state.buildFilterQuery,
+            linkCharts: state.linkCharts,
+            activeFilters: state.activeFilters,
+        }))
+    );
+
+    const linkedChartSignature = useMemo(() => {
+        if (!linkedChartIds || linkedChartIds.length === 0) return '';
+        return Array.from(new Set(linkedChartIds.filter(Boolean))).sort().join('|');
     }, [linkedChartIds]);
 
+    // Link charts if provided (stable key to avoid update loops)
+    React.useEffect(() => {
+        const normalizedIds = linkedChartSignature ? linkedChartSignature.split('|') : [];
+        const existing = useCrossFilterStore.getState().linkedGroups[AUTO_LINKED_GROUP_ID] || [];
+
+        const isSame =
+            existing.length === normalizedIds.length &&
+            existing.every((id, index) => id === normalizedIds[index]);
+
+        if (isSame) return;
+        linkCharts(AUTO_LINKED_GROUP_ID, normalizedIds);
+    }, [linkedChartSignature, linkCharts]);
+
     const setFilter = useCallback((chartId: string, field: string, value: string | number | null) => {
-        store.setFilter({ chartId, field, value, operator: '=' });
-    }, [store]);
+        setStoreFilter({ chartId, field, value, operator: '=' });
+    }, [setStoreFilter]);
 
     const setMultiFilter = useCallback((chartId: string, field: string, values: (string | number)[]) => {
-        store.setFilter({ chartId, field, value: null, operator: 'in', values });
-    }, [store]);
+        setStoreFilter({ chartId, field, value: null, operator: 'in', values });
+    }, [setStoreFilter]);
 
     const setRangeFilter = useCallback((chartId: string, field: string, min: number, max: number) => {
-        store.setFilter({ chartId, field, value: null, operator: 'range', range: { min, max } });
-    }, [store]);
+        setStoreFilter({ chartId, field, value: null, operator: 'range', range: { min, max } });
+    }, [setStoreFilter]);
 
     const clearFilter = useCallback((chartId: string, field?: string) => {
-        store.clearFilter(chartId, field);
-    }, [store]);
+        clearStoreFilter(chartId, field);
+    }, [clearStoreFilter]);
 
     const getFiltersForChart = useCallback((chartId: string) => {
-        return store.getFiltersForChart(chartId, true);
-    }, [store]);
+        return getFiltersForChartFromStore(chartId, true);
+    }, [getFiltersForChartFromStore]);
 
     const getFilterQuery = useCallback((chartId: string) => {
-        return store.buildFilterQuery(chartId);
-    }, [store]);
+        return buildFilterQueryFromStore(chartId);
+    }, [buildFilterQueryFromStore]);
 
     const hasActiveFilter = useCallback((chartId: string) => {
-        return store.activeFilters.some((f) => f.chartId === chartId);
-    }, [store.activeFilters]);
+        return activeFilters.some((f) => f.chartId === chartId);
+    }, [activeFilters]);
 
     const contextValue = useMemo<CrossFilterContextValue>(() => ({
         setFilter,
         setMultiFilter,
         setRangeFilter,
         clearFilter,
-        clearAllFilters: store.clearAllFilters,
+        clearAllFilters: clearAllStoreFilters,
         getFiltersForChart,
         getFilterQuery,
         hasActiveFilter,
-        activeFilters: store.activeFilters,
+        activeFilters,
     }), [
         setFilter, 
         setMultiFilter, 
         setRangeFilter, 
         clearFilter, 
-        store.clearAllFilters,
+        clearAllStoreFilters,
         getFiltersForChart,
         getFilterQuery,
         hasActiveFilter,
-        store.activeFilters,
+        activeFilters,
     ]);
 
     return (

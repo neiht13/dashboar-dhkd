@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 
 // Dynamic import để tránh SSR issues với MapLibre
 const UltimateDashboard = dynamic(
-    () => import("@/components/example").then((mod) => mod.default),
+    () => import("@/components/dashboards/phattrienmoi").then((mod) => mod.default),
     {
         ssr: false,
         loading: () => (

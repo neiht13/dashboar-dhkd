@@ -48,6 +48,18 @@ export async function GET(
             );
         }
 
+        if (
+            Array.isArray(template.targetRoles) &&
+            template.targetRoles.length > 0 &&
+            !template.targetRoles.includes(user.role) &&
+            user.role !== 'admin'
+        ) {
+            return NextResponse.json(
+                { success: false, error: 'Template is not available for your role' },
+                { status: 403 }
+            );
+        }
+
         // Check access rights
         if (!template.isPublic && template.createdBy?.toString() !== user?.userId) {
             return NextResponse.json(
@@ -117,7 +129,18 @@ export async function PUT(
         }
 
         const body = await request.json();
-        const { name, description, category, widgets, layout, isPublic, tags, thumbnail } = body;
+        const {
+            name,
+            description,
+            category,
+            widgets,
+            layout,
+            isPublic,
+            tags,
+            thumbnail,
+            targetRoles,
+            persona,
+        } = body;
 
         const updateData: Record<string, unknown> = { updatedAt: new Date() };
         if (name !== undefined) updateData.name = name;
@@ -128,6 +151,14 @@ export async function PUT(
         if (isPublic !== undefined) updateData.isPublic = isPublic;
         if (tags !== undefined) updateData.tags = tags;
         if (thumbnail !== undefined) updateData.thumbnail = thumbnail;
+        if (targetRoles !== undefined) {
+            updateData.targetRoles = Array.isArray(targetRoles)
+                ? targetRoles.filter((role: string) =>
+                    ['admin', 'editor', 'viewer', 'user'].includes(role)
+                )
+                : [];
+        }
+        if (persona !== undefined) updateData.persona = persona;
 
         await db
             .collection('dashboardtemplates')

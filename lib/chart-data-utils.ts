@@ -89,9 +89,9 @@ export function aggregateChartData(
             yAxis.forEach(y => {
                 groups[key][y] =
                     aggregation === 'min'
-                        ? "Không xác định"
+                        ? Number.POSITIVE_INFINITY
                         : aggregation === 'max'
-                            ? -"Không xác định"
+                            ? Number.NEGATIVE_INFINITY
                             : 0;
             });
 
@@ -141,6 +141,12 @@ export function aggregateChartData(
         } else if (aggregation === 'count') {
             yAxis.forEach(y => {
                 row[y] = g._count || 0;
+            });
+        } else if (aggregation === 'min' || aggregation === 'max') {
+            yAxis.forEach(y => {
+                if (!Number.isFinite(row[y])) {
+                    row[y] = 0;
+                }
             });
         }
 

@@ -4,15 +4,17 @@ import {
     ComposedChart, Line, PieChart, Pie, Cell, ScatterChart, Scatter, ZAxis, ReferenceLine,
     Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, LabelList
 } from 'recharts';
+import { useTheme } from 'next-themes';
 import {
     LayoutDashboard, TrendingUp, Users, Tv, Wifi, Router,
     Activity, Grid, Search, Filter,
     ArrowUpDown, ChevronDown, ChevronUp, Target, AlertCircle,
     BarChart2, List, CheckCircle, XCircle, Map as MapIcon, Maximize, Minimize, Calendar,
-    TrendingDown, RefreshCcw, Share2, PauseCircle, Clock, UserCheck
+    TrendingDown, RefreshCcw, Share2, PauseCircle, Clock, UserCheck,
+    Sun, Moon
 } from 'lucide-react';
 import { PermissionManager } from "@/components/dashboard-builder/PermissionManager";
-import { MapChart } from './charts/MapChart.lazy';
+import { MapChart } from '../charts/MapChart.lazy';
 
 
 // --- DỮ LIỆU TỪ XML ---
@@ -34,6 +36,8 @@ const REFRESH_INTERVALS = [
 
 // ANGULAR GAUGE CHART
 const AngularGauge = ({ value, color, size = 120 }) => {
+    const { theme } = useTheme();
+    const isDark = theme === 'dark';
     // Value for gauge visual (0-100), but text displays actual value
     const percent = Math.min(Math.max(value, 0), 100);
     const radius = size / 2;
@@ -48,7 +52,7 @@ const AngularGauge = ({ value, color, size = 120 }) => {
             <svg height={size / 2} width={size} viewBox={`0 0 ${size} ${size / 2}`} className="overflow-visible">
                 <path
                     d={`M ${strokeWidth},${radius} A ${normalizedRadius},${normalizedRadius} 0 0 1 ${size - strokeWidth},${radius}`}
-                    fill="none" stroke="#f1f5f9" strokeWidth={strokeWidth} strokeLinecap="butt"
+                    fill="none" stroke={isDark ? "#334155" : "#f1f5f9"} strokeWidth={strokeWidth} strokeLinecap="butt"
                 />
                 <path
                     d={`M ${strokeWidth},${radius} A ${normalizedRadius},${normalizedRadius} 0 0 1 ${size - strokeWidth},${radius}`}
@@ -56,8 +60,8 @@ const AngularGauge = ({ value, color, size = 120 }) => {
                     strokeDashoffset={strokeDashoffset} strokeLinecap="butt" className="transition-all duration-1000 ease-out"
                 />
                 <g transform={`translate(${radius}, ${radius}) rotate(${rotation})`}>
-                    <polygon points="-4,-10 0,-radius 4,-10" fill="#1e293b" transform={`scale(${size / 100}) translate(0, -${normalizedRadius - 15})`} />
-                    <circle cx="0" cy="0" r="4" fill="#1e293b" />
+                    <polygon points="-4,-10 0,-radius 4,-10" fill={isDark ? "#e2e8f0" : "#1e293b"} transform={`scale(${size / 100}) translate(0, -${normalizedRadius - 15})`} />
+                    <circle cx="0" cy="0" r="4" fill={isDark ? "#e2e8f0" : "#1e293b"} />
                 </g>
             </svg>
             <div className="absolute bottom-0 text-center">
@@ -74,23 +78,23 @@ const StatCard = ({ title, value, subValue, percent, icon: Icon, color, subLabel
     const isPositive = percent >= 0;
 
     return (
-        <div className="bg-white border border-slate-200 shadow-sm hover:shadow-md transition-all duration-300 rounded-none group relative overflow-hidden">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 rounded-none group relative overflow-hidden">
             <div className="absolute top-0 right-0 w-0 h-0 border-l-[40px] border-l-transparent border-t-[40px]" style={{ borderTopColor: color, opacity: 0.1 }}></div>
 
             <div className="py-2 px-4 flex justify-between items-center h-full">
                 <div className="flex-1 flex flex-col justify-between h-full">
                     <div>
                         <div className="flex items-center gap-2 mb-2">
-                            <div className={`p-1.5 rounded-none bg-slate-100 text-slate-600`}>
+                            <div className={`p-1.5 rounded-none bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400`}>
                                 <Icon size={16} />
                             </div>
-                            <h3 className="text-slate-500 text-[11px] font-bold uppercase tracking-widest">{title}</h3>
+                            <h3 className="text-slate-500 dark:text-slate-400 text-[11px] font-bold uppercase tracking-widest">{title}</h3>
                         </div>
                         <div className='grid grid-cols-2'>
 
                             <div className="mt-1">
-                                <span className="text-3xl font-black text-slate-800 tracking-tight block">{value}</span>
-                                <span className="text-sm font-bold text-slate-400 block mt-1">{subValue}</span>
+                                <span className="text-3xl font-black text-slate-800 dark:text-slate-100 tracking-tight block">{value}</span>
+                                <span className="text-sm font-bold text-slate-400 dark:text-slate-500 block mt-1">{subValue}</span>
                             </div>
                             <div className="mt-4 flex items-center gap-1 text-[10px] font-bold">
                                 {/* Logic adapted for Metric Growth vs Decline */}
@@ -115,31 +119,31 @@ const UnitTile = ({ unit, onClick, isSelected }) => {
         <div
             onClick={onClick}
             className={`relative p-2 border-2 cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:shadow-lg flex flex-col justify-between h-24 group
-        ${isSelected ? 'border-blue-600 bg-blue-50/10 z-10' : 'border-slate-100 bg-white hover:border-blue-300'}
+        ${isSelected ? 'border-blue-600 dark:border-blue-500 bg-blue-50/10 z-10' : 'border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-blue-300 dark:hover:border-blue-700'}
       `}
         >
             <div className="flex justify-between items-start">
-                <span className={`font-black text-sm uppercase ${isSelected ? 'text-blue-700' : 'text-slate-700'}`}>{unit.code}</span>
+                <span className={`font-black text-sm uppercase ${isSelected ? 'text-blue-700 dark:text-blue-400' : 'text-slate-700 dark:text-slate-300'}`}>{unit.code}</span>
                 {isPositive && <div className="w-2 h-2 bg-emerald-500 rotate-45"></div>}
             </div>
 
             <div className="">
                 <div className="flex justify-between items-end">
                     <span className="text-[10px] text-slate-400 uppercase font-bold">Biến Động</span>
-                    <span className={`text-xl font-light ${isPositive ? 'text-emerald-600 font-bold' : 'text-red-600 font-bold'}`}>
+                    <span className={`text-xl font-light ${isPositive ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-red-600 dark:text-red-400 font-bold'}`}>
                         {unit.netTotal > 0 ? `+${unit.netTotal}` : unit.netTotal}
                     </span>
                 </div>
                 {/* Progress Bar Mini - Visualizing PTM contribution */}
-                <div className="w-full bg-slate-100 h-1.5 mt-1 overflow-hidden flex">
+                <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 mt-1 overflow-hidden flex">
                     <div className="bg-emerald-500 h-full" style={{ width: `${Math.min((unit.ptmTotal / (unit.ptmTotal + unit.tlTotal || 1)) * 100, 100)}%` }}></div>
                     <div className="bg-red-500 h-full" style={{ width: `${Math.min((unit.tlTotal / (unit.ptmTotal + unit.tlTotal || 1)) * 100, 100)}%` }}></div>
                 </div>
             </div>
 
-            <div className="mt-0 pt-2 border-t border-slate-100 flex justify-between text-[10px] text-slate-500">
-                <span>PTM: <b className="text-emerald-600">{unit.ptmTotal}</b></span>
-                <span>Hủy: <b className="text-red-600">{unit.tlTotal}</b></span>
+            <div className="mt-0 pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-between text-[10px] text-slate-500 dark:text-slate-400">
+                <span>PTM: <b className="text-emerald-600 dark:text-emerald-400">{unit.ptmTotal}</b></span>
+                <span>Hủy: <b className="text-red-600 dark:text-red-400">{unit.tlTotal}</b></span>
             </div>
         </div>
     );
@@ -170,6 +174,8 @@ const getUnitInfo = (code) => {
 
 
 export default function DashboardNetAdd() {
+    const { theme, setTheme } = useTheme();
+    const isDark = theme === 'dark';
     const [rawData, setRawData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedUnit, setSelectedUnit] = useState(null);
@@ -420,20 +426,20 @@ export default function DashboardNetAdd() {
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+            <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
                 <div className="flex flex-col items-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-                    <div className="text-slate-500 font-medium">Đang tải dữ liệu báo cáo...</div>
+                    <div className="text-slate-500 dark:text-slate-400 font-medium">Đang tải dữ liệu báo cáo...</div>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className={`h-screen w-full p-8 flex flex-col bg-slate-50 font-sans text-slate-800 ${isFullScreen ? 'fixed inset-0 z-[100]' : ''}`}>
+        <div className={`h-screen w-full p-8 flex flex-col bg-slate-50 dark:bg-slate-950 font-sans text-slate-800 dark:text-slate-100 ${isFullScreen ? 'fixed inset-0 z-[100]' : ''}`}>
 
             {/* HEADER */}
-            <div className="bg-white border-b border-slate-200 shrink-0 shadow-sm">
+            <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0 shadow-sm">
                 <div className="w-full px-2">
                     <div className="flex justify-between h-14 items-center">
                         <div className="flex items-center gap-3">
@@ -441,47 +447,47 @@ export default function DashboardNetAdd() {
                                 <Wifi size={18} />
                             </div>
                             <div>
-                                <h1 className="text-base font-black text-slate-900 tracking-tighter uppercase">{REPORT_META.title}</h1>
+                                <h1 className="text-base font-black text-slate-900 dark:text-slate-50 tracking-tighter uppercase">{REPORT_META.title}</h1>
                                 <div className="flex items-center gap-2 mt-0.5">
-                                    <div className="flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded text-[10px] uppercase font-bold text-slate-600 border border-slate-200">
+                                    <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[10px] uppercase font-bold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
                                         <Calendar size={10} className="text-slate-400" />
                                         <span>Tháng</span>
                                         <select
                                             value={month}
                                             onChange={(e) => setMonth(parseInt(e.target.value))}
-                                            className="bg-transparent outline-none text-blue-700 font-extrabold cursor-pointer hover:bg-slate-200 rounded px-1"
+                                            className="bg-transparent outline-none text-blue-700 dark:text-blue-400 font-extrabold cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700/50 rounded px-1"
                                         >
                                             {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
-                                                <option key={m} value={m}>{m}</option>
+                                                <option key={m} value={m} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">{m}</option>
                                             ))}
                                         </select>
                                     </div>
-                                    <div className="flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded text-[10px] uppercase font-bold text-slate-600 border border-slate-200">
+                                    <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[10px] uppercase font-bold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
                                         <span>Năm</span>
                                         <select
                                             value={year}
                                             onChange={(e) => setYear(parseInt(e.target.value))}
-                                            className="bg-transparent outline-none text-blue-700 font-extrabold cursor-pointer hover:bg-slate-200 rounded px-1"
+                                            className="bg-transparent outline-none text-blue-700 dark:text-blue-400 font-extrabold cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700/50 rounded px-1"
                                         >
-                                            <option value={2024}>2024</option>
-                                            <option value={2025}>2025</option>
-                                            <option value={2026}>2026</option>
-                                            <option value={2027}>2027</option>
-                                            <option value={2028}>2028</option>
-                                            <option value={2029}>2029</option>
-                                            <option value={2030}>2030</option>
+                                            <option value={2024} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">2024</option>
+                                            <option value={2025} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">2025</option>
+                                            <option value={2026} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">2026</option>
+                                            <option value={2027} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">2027</option>
+                                            <option value={2028} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">2028</option>
+                                            <option value={2029} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">2029</option>
+                                            <option value={2030} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">2030</option>
                                         </select>
                                     </div>
 
-                                    <div className="flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded text-[10px] uppercase font-bold text-slate-600 border border-slate-200">
+                                    <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[10px] uppercase font-bold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
                                         <Clock size={10} className="text-slate-400" />
                                         <select
                                             value={refreshInterval}
                                             onChange={(e) => setRefreshInterval(parseInt(e.target.value))}
-                                            className="bg-transparent outline-none text-blue-700 font-extrabold cursor-pointer hover:bg-slate-200 rounded px-1"
+                                            className="bg-transparent outline-none text-blue-700 dark:text-blue-400 font-extrabold cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700/50 rounded px-1"
                                         >
                                             {REFRESH_INTERVALS.map(interval => (
-                                                <option key={interval.value} value={interval.value}>{interval.label}</option>
+                                                <option key={interval.value} value={interval.value} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">{interval.label}</option>
                                             ))}
                                         </select>
                                     </div>
@@ -489,22 +495,29 @@ export default function DashboardNetAdd() {
                             </div>
                         </div>
 
-                        <div className="flex bg-slate-100 p-1 rounded-none">
-                            <button onClick={() => setActiveTab('overview')} className={`flex items-center gap-2 px-3 py-1 text-[11px] font-bold uppercase transition-all rounded-none ${activeTab === 'overview' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                        <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-none">
+                            <button onClick={() => setActiveTab('overview')} className={`flex items-center gap-2 px-3 py-1 text-[11px] font-bold uppercase transition-all rounded-none ${activeTab === 'overview' ? 'bg-white dark:bg-slate-950 text-blue-700 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}>
                                 <LayoutDashboard size={14} /> Toàn cảnh
                             </button>
-                            <button onClick={() => setActiveTab('analysis')} className={`flex items-center gap-2 px-3 py-1 text-[11px] font-bold uppercase transition-all rounded-none ${activeTab === 'analysis' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                            <button onClick={() => setActiveTab('analysis')} className={`flex items-center gap-2 px-3 py-1 text-[11px] font-bold uppercase transition-all rounded-none ${activeTab === 'analysis' ? 'bg-white dark:bg-slate-950 text-blue-700 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}>
                                 <BarChart2 size={14} /> Phân tích
                             </button>
-                            <button onClick={() => setActiveTab('map')} className={`flex items-center gap-2 px-3 py-1 text-[11px] font-bold uppercase transition-all rounded-none ${activeTab === 'map' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                            <button onClick={() => setActiveTab('map')} className={`flex items-center gap-2 px-3 py-1 text-[11px] font-bold uppercase transition-all rounded-none ${activeTab === 'map' ? 'bg-white dark:bg-slate-950 text-blue-700 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}>
                                 <MapIcon size={14} /> Bản đồ
                             </button>
                             <button
                                 onClick={() => setIsFullScreen(!isFullScreen)}
                                 title={isFullScreen ? "Thoát toàn màn hình" : "Toàn màn hình"}
-                                className={`flex items-center justify-center w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors border-l border-white`}
+                                className={`flex items-center justify-center w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors border-l border-white dark:border-slate-700`}
                             >
                                 {isFullScreen ? <Minimize size={14} /> : <Maximize size={14} />}
+                            </button>
+                            <button
+                                onClick={() => setTheme(isDark ? 'light' : 'dark')}
+                                title={isDark ? "Chuyển sang chế độ sáng" : "Chuyển sang chế độ tối"}
+                                className={`flex items-center justify-center w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors border-l border-white dark:border-slate-700`}
+                            >
+                                {isDark ? <Sun size={14} /> : <Moon size={14} />}
                             </button>
                             <PermissionManager
                                 dashboardId="net-add"
@@ -527,7 +540,7 @@ export default function DashboardNetAdd() {
 
                 {/* 1. SECTION 1: FIBER INTERNET */}
                 <div>
-                    <h3 className="font-bold text-slate-600 mb-2 flex items-center gap-2 uppercase tracking-wide text-sm">
+                    <h3 className="font-bold text-slate-600 dark:text-slate-400 mb-2 flex items-center gap-2 uppercase tracking-wide text-sm">
                         <Wifi size={14} className="text-blue-600" />
                         Dịch vụ Fiber Internet
                     </h3>
@@ -593,7 +606,7 @@ export default function DashboardNetAdd() {
 
                 {/* 2. SECTION 2: MYTV */}
                 <div className="mt-6">
-                    <h3 className="font-bold text-slate-600 mb-2 flex items-center gap-2 uppercase tracking-wide text-sm">
+                    <h3 className="font-bold text-slate-600 dark:text-slate-400 mb-2 flex items-center gap-2 uppercase tracking-wide text-sm">
                         <Tv size={14} className="text-purple-600" />
                         Dịch vụ Truyền hình MyTV
                     </h3>
@@ -659,27 +672,27 @@ export default function DashboardNetAdd() {
                 </div>
 
                 {/* 2. TOOLBAR (FILTER & SORT) */}
-                <div className="bg-white border border-slate-200 p-2 shadow-sm flex flex-col md:flex-row justify-between items-center gap-2 sticky top-0 z-20">
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-2 shadow-sm flex flex-col md:flex-row justify-between items-center gap-2 sticky top-0 z-20">
                     <div className="relative w-full md:w-64">
                         <Search size={16} className="absolute left-3 top-2.5 text-slate-400" />
                         <input
                             type="text" placeholder="Tìm đơn vị..."
-                            className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 focus:border-blue-500 focus:ring-0 rounded-none bg-slate-50 focus:bg-white transition-colors outline-none"
+                            className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 dark:border-slate-700 focus:border-blue-500 focus:ring-0 rounded-none bg-slate-50 dark:bg-slate-950 focus:bg-white dark:focus:bg-slate-900 transition-colors outline-none dark:text-slate-200"
                             value={filterText} onChange={(e) => setFilterText(e.target.value)}
                         />
                     </div>
 
                     <div className="flex flex-wrap gap-2 w-full md:w-auto items-center">
-                        <div className="flex bg-slate-100 p-1 rounded-none">
-                            <button onClick={() => setFilterStatus('all')} className={`px-3 py-1.5 text-sm font-bold ${filterStatus === 'all' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}>Tất cả</button>
-                            <button onClick={() => setFilterStatus('achieved')} className={`px-3 py-1.5 text-sm font-bold ${filterStatus === 'achieved' ? 'bg-white shadow text-emerald-700' : 'text-slate-500'}`}>Tăng trưởng (+)</button>
-                            <button onClick={() => setFilterStatus('not_reached')} className={`px-3 py-1.5 text-sm font-bold ${filterStatus === 'not_reached' ? 'bg-white shadow text-red-700' : 'text-slate-500'}`}>Suy giảm (-)</button>
+                        <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-none">
+                            <button onClick={() => setFilterStatus('all')} className={`px-3 py-1.5 text-sm font-bold ${filterStatus === 'all' ? 'bg-white dark:bg-slate-950 shadow text-slate-800 dark:text-slate-200' : 'text-slate-500 dark:text-slate-400'}`}>Tất cả</button>
+                            <button onClick={() => setFilterStatus('achieved')} className={`px-3 py-1.5 text-sm font-bold ${filterStatus === 'achieved' ? 'bg-white dark:bg-slate-950 shadow text-emerald-700 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>Tăng trưởng (+)</button>
+                            <button onClick={() => setFilterStatus('not_reached')} className={`px-3 py-1.5 text-sm font-bold ${filterStatus === 'not_reached' ? 'bg-white dark:bg-slate-950 shadow text-red-700 dark:text-red-400' : 'text-slate-500 dark:text-slate-400'}`}>Suy giảm (-)</button>
                         </div>
-                        <div className="h-6 w-px bg-slate-200 mx-2 hidden md:block"></div>
+                        <div className="h-6 w-px bg-slate-200 dark:bg-slate-800 mx-2 hidden md:block"></div>
                         <div className="flex items-center gap-2">
                             <span className="text-sm font-bold text-slate-400 uppercase mr-1">Sắp xếp:</span>
                             <select
-                                className="text-sm border border-slate-300 py-1.5 px-3 bg-white outline-none focus:border-blue-500"
+                                className="text-sm border border-slate-300 dark:border-slate-700 py-1.5 px-3 bg-white dark:bg-slate-900 outline-none focus:border-blue-500 dark:text-slate-200"
                                 value={sortKey} onChange={(e) => setSortKey(e.target.value)}
                             >
                                 <option value="netTotal">Biến Động Tổng</option>
@@ -687,7 +700,7 @@ export default function DashboardNetAdd() {
                                 <option value="tlTotal">Tổng Hủy</option>
                                 <option value="name">Tên đơn vị</option>
                             </select>
-                            <button onClick={() => setSortDir(prev => prev === 'asc' ? 'desc' : 'asc')} className="p-1.5 border border-slate-300 bg-white hover:bg-slate-50 text-slate-600">
+                            <button onClick={() => setSortDir(prev => prev === 'asc' ? 'desc' : 'asc')} className="p-1.5 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300">
                                 {sortDir === 'desc' ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
                             </button>
                         </div>
@@ -699,9 +712,9 @@ export default function DashboardNetAdd() {
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
                         {/* LEFT: RANKING CHART */}
-                        <div className="lg:col-span-2 bg-white p-5 border border-slate-200 shadow-sm h-[300px] flex flex-col">
+                        <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-5 border border-slate-200 dark:border-slate-800 shadow-sm h-[300px] flex flex-col">
                             <div className="flex justify-between items-center mb-4">
-                                <h2 className="font-bold text-slate-800 flex items-center gap-2">
+                                <h2 className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                                     <TrendingUp size={18} className="text-blue-600" />
                                     Xếp hạng
                                 </h2>
@@ -715,10 +728,10 @@ export default function DashboardNetAdd() {
                                     <BarChart
                                         data={processedData}
                                         margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                                    >      <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                        <XAxis dataKey="code" tick={{ fontSize: 10, fontWeight: 'bold' }} interval={0} />
-                                        <YAxis tick={{ fontSize: 10 }} />
-                                        <Tooltip contentStyle={{ borderRadius: 0, border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} cursor={{ fill: '#f1f5f9' }} />
+                                    >      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? "#334155" : "#e2e8f0"} />
+                                        <XAxis dataKey="code" tick={{ fontSize: 10, fontWeight: 'bold', fill: isDark ? "#94a3b8" : "#666" }} interval={0} />
+                                        <YAxis tick={{ fontSize: 10, fill: isDark ? "#94a3b8" : "#666" }} />
+                                        <Tooltip contentStyle={{ borderRadius: 0, border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', backgroundColor: isDark ? '#1e293b' : '#fff', color: isDark ? '#f1f5f9' : '#1e293b' }} cursor={{ fill: isDark ? '#334155' : '#f1f5f9' }} />
                                         <ReferenceLine y={0} stroke="#000" />
                                         <Bar dataKey="netFiber" name="Net Fiber" fill="#3033ffff" barSize={14} radius={[2, 2, 0, 0]} onClick={(data) => setSelectedUnit(data)}>
                                             <LabelList dataKey="netFiber" position="top" style={{ fontSize: '10px', fontWeight: 'bold', fill: '#222222' }} />
@@ -732,13 +745,13 @@ export default function DashboardNetAdd() {
                         </div>
 
                         {/* RIGHT: UNIT DETAIL (RADAR) */}
-                        <div className="bg-white p-5 shadow-lg border-t-4 border-blue-500 flex flex-col border border-slate-200">
+                        <div className="bg-white dark:bg-slate-900 p-5 shadow-lg border-t-4 border-blue-500 flex flex-col border border-slate-200 dark:border-slate-800">
                             {selectedUnit ? (
                                 <>
                                     <div className="flex justify-between items-start mb-2">
                                         <div>
-                                            <h2 className="font-bold text-lg text-slate-800">{selectedUnit.name}</h2>
-                                            <span className="text-sm bg-slate-100 px-2 py-0.5 rounded text-slate-500 font-mono border border-slate-200">{selectedUnit.code}</span>
+                                            <h2 className="font-bold text-lg text-slate-800 dark:text-slate-100">{selectedUnit.name}</h2>
+                                            <span className="text-sm bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-500 dark:text-slate-400 font-mono border border-slate-200 dark:border-slate-700">{selectedUnit.code}</span>
                                         </div>
                                         <div className="text-right">
                                             <div className={`text-3xl font-black ${selectedUnit.netTotal >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
@@ -750,7 +763,7 @@ export default function DashboardNetAdd() {
 
                                     <div className="space-y-4 mt-6">
                                         {/* FIBER STATS */}
-                                        <div className="bg-slate-50 p-3 rounded border border-slate-100">
+                                        <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded border border-slate-100 dark:border-slate-700">
                                             <h4 className="text-sm font-bold text-blue-600 uppercase mb-2 flex justify-between">
                                                 <span>Fiber Internet</span>
                                                 <span className={selectedUnit.netFiber >= 0 ? 'text-emerald-600' : 'text-red-600'}>Net: {selectedUnit.netFiber}</span>
@@ -763,7 +776,7 @@ export default function DashboardNetAdd() {
                                         </div>
 
                                         {/* MYTV STATS */}
-                                        <div className="bg-slate-50 p-3 rounded border border-slate-100">
+                                        <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded border border-slate-100 dark:border-slate-700">
                                             <h4 className="text-sm font-bold text-purple-600 uppercase mb-2 flex justify-between">
                                                 <span>MyTV Truyền hình</span>
                                                 <span className={selectedUnit.netMytv >= 0 ? 'text-emerald-600' : 'text-red-600'}>Net: {selectedUnit.netMytv}</span>
@@ -789,8 +802,8 @@ export default function DashboardNetAdd() {
                 {activeTab === 'analysis' && (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         {/* SCATTER CHART */}
-                        <div className="lg:col-span-2 bg-white p-5 border border-slate-200 shadow-sm">
-                            <h2 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                        <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-5 border border-slate-200 dark:border-slate-800 shadow-sm">
+                            <h2 className="font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2">
                                 <Target size={18} className="text-red-500" />
                                 Phân tích Tương quan PTM và Hủy
                             </h2>
@@ -806,7 +819,7 @@ export default function DashboardNetAdd() {
                                                 if (payload && payload.length) {
                                                     const { name, ptmTotal, tlTotal, netTotal } = payload[0].payload;
                                                     return (
-                                                        <div className="bg-slate-800 text-white p-2 text-sm rounded shadow-lg">
+                                                        <div className="bg-slate-800 dark:bg-slate-700 text-white p-2 text-sm rounded shadow-lg">
                                                             <p className="font-bold">{name}</p>
                                                             <p className="text-emerald-300">PTM: {ptmTotal}</p>
                                                             <p className="text-red-300">Hủy: {tlTotal}</p>
@@ -829,14 +842,14 @@ export default function DashboardNetAdd() {
                         </div>
 
                         {/* RADAR & PIE - UNIT DETAIL */}
-                        <div className="bg-white p-5 border border-slate-200 shadow-sm flex flex-col">
+                        <div className="bg-white dark:bg-slate-900 p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col">
                             {selectedUnit ? (
                                 <>
-                                    <div className="mb-4 pb-4 border-b border-slate-100">
-                                        <h2 className="font-bold text-lg text-slate-800">{selectedUnit.name}</h2>
+                                    <div className="mb-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+                                        <h2 className="font-bold text-lg text-slate-800 dark:text-slate-100">{selectedUnit.name}</h2>
                                         <div className="flex gap-4 mt-2 text-sm">
-                                            <div className="text-emerald-600 font-bold">PTM: {selectedUnit.ptmTotal}</div>
-                                            <div className="text-red-600 font-bold">Hủy: {selectedUnit.tlTotal}</div>
+                                            <div className="text-emerald-600 dark:text-emerald-400 font-bold">PTM: {selectedUnit.ptmTotal}</div>
+                                            <div className="text-red-600 dark:text-red-400 font-bold">Hủy: {selectedUnit.tlTotal}</div>
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4 overflow-y-auto">
@@ -845,18 +858,18 @@ export default function DashboardNetAdd() {
                                             <h4 className="text-sm font-bold text-slate-400 uppercase text-center mb-2">So sánh với TRUNG BÌNH</h4>
                                             <ResponsiveContainer width="100%" height="100%">
                                                 <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
-                                                    <PolarGrid stroke="#e2e8f0" />
+                                                    <PolarGrid stroke={isDark ? "#334155" : "#e2e8f0"} />
                                                     <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 10, fontWeight: 'bold' }} />
                                                     <PolarRadiusAxis angle={30} domain={[0, 150]} tick={false} axisLine={false} />
                                                     <Radar name={selectedUnit.name} dataKey="A" stroke="#3b82f6" strokeWidth={2} fill="#3b82f6" fillOpacity={0.3} />
                                                     <Radar name="Trung bình" dataKey="B" stroke="#94a3b8" strokeWidth={1} strokeDasharray="4 4" fill="transparent" />
-                                                    <Tooltip />
+                                                    <Tooltip contentStyle={{ backgroundColor: isDark ? '#1e293b' : '#fff', borderColor: isDark ? '#334155' : '#e2e8f0', color: isDark ? '#f1f5f9' : '#1e293b' }} />
                                                 </RadarChart>
                                             </ResponsiveContainer>
                                         </div>
 
                                         {/* Pie */}
-                                        <div className="h-40 mt-4 pt-4 border-t border-slate-100">
+                                        <div className="h-40 mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
                                             <h4 className="text-sm font-bold text-slate-400 uppercase text-center mb-2">Tỷ trọng PTM Fiber / MyTV</h4>
                                             <div className="flex items-center h-full">
                                                 <div className="w-1/2 h-full">
@@ -898,8 +911,8 @@ export default function DashboardNetAdd() {
 
                 {/* 5. MAP TAB CONTENT */}
                 {activeTab === 'map' && (
-                    <div className="bg-white p-5 border border-slate-200 shadow-sm h-[400px] relative">
-                        <h2 className="font-bold text-slate-800 mb-4 flex items-center gap-2 absolute top-5 left-5 z-10 bg-white/80 backdrop-blur-sm p-2 rounded shadow-sm">
+                    <div className="bg-white dark:bg-slate-900 p-5 border border-slate-200 dark:border-slate-800 shadow-sm h-[400px] relative">
+                        <h2 className="font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2 absolute top-5 left-5 z-10 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm p-2 rounded shadow-sm">
                             <MapIcon size={18} className="text-emerald-500" />
                             Bản đồ Biến Động Thuê Bao
                         </h2>
@@ -923,7 +936,7 @@ export default function DashboardNetAdd() {
                                     },
                                     mapColorScheme: 'signal',
                                     mapDisplayMode: 'heatmap',
-                                    tooltipTheme: 'light'
+                                    tooltipTheme: isDark ? 'dark' : 'light'
                                 }
                             }}
                             height="100%"
@@ -932,9 +945,9 @@ export default function DashboardNetAdd() {
                 )}
 
                 {/* 5. TILE GRID */}
-                <div className="bg-white border border-slate-200 shadow-sm p-5">
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-5">
                     <div className="flex justify-between items-center mb-4">
-                        <h2 className="font-bold text-slate-800 flex items-center gap-2">
+                        <h2 className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                             <Grid size={18} className="text-slate-500" />
                             Danh sách Đơn vị ({processedData.length})
                         </h2>
@@ -951,7 +964,7 @@ export default function DashboardNetAdd() {
                             ))}
                         </div>
                     ) : (
-                        <div className="text-center py-10 text-slate-400 italic bg-slate-50">
+                        <div className="text-center py-10 text-slate-400 italic bg-slate-50 dark:bg-slate-950">
                             Không tìm thấy dữ liệu phù hợp với bộ lọc.
                         </div>
                     )}

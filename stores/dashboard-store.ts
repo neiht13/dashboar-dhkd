@@ -12,6 +12,22 @@ interface DashboardState {
     isLoading: boolean;
     error: string | null;
 
+    // Power BI-style selection
+    selectedWidgetId: string | null;
+    setSelectedWidgetId: (id: string | null) => void;
+    rightPanelTab: 'build' | 'format' | 'data';
+    setRightPanelTab: (tab: 'build' | 'format' | 'data') => void;
+    showFilterPanel: boolean;
+    setShowFilterPanel: (show: boolean) => void;
+    showDataPanel: boolean;
+    setShowDataPanel: (show: boolean) => void;
+
+    // Dashboard-level drilldown
+    drilldownStack: { tabId: string; filters: Record<string, string> }[];
+    pushDrilldown: (tabId: string, filters?: Record<string, string>) => void;
+    popDrilldown: () => void;
+    clearDrilldownStack: () => void;
+
     // Actions
     setDashboards: (dashboards: Dashboard[]) => void;
     setCurrentDashboard: (dashboard: Dashboard | null) => void;
@@ -51,6 +67,26 @@ export const useDashboardStore = create<DashboardState>()(
             isSaving: false,
             isLoading: false,
             error: null,
+
+            // Power BI-style selection
+            selectedWidgetId: null,
+            setSelectedWidgetId: (id) => set({ selectedWidgetId: id }),
+            rightPanelTab: 'build',
+            setRightPanelTab: (tab) => set({ rightPanelTab: tab }),
+            showFilterPanel: true,
+            setShowFilterPanel: (show) => set({ showFilterPanel: show }),
+            showDataPanel: true,
+            setShowDataPanel: (show) => set({ showDataPanel: show }),
+
+            // Dashboard-level drilldown
+            drilldownStack: [],
+            pushDrilldown: (tabId, filters = {}) => set((state) => ({
+                drilldownStack: [...state.drilldownStack, { tabId, filters }],
+            })),
+            popDrilldown: () => set((state) => ({
+                drilldownStack: state.drilldownStack.slice(0, -1),
+            })),
+            clearDrilldownStack: () => set({ drilldownStack: [] }),
 
             globalFilters: {
                 dateRange: {

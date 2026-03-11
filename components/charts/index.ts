@@ -25,8 +25,6 @@ export { MapChart } from './MapChart';
 export { StatCard } from './StatCard';
 
 // Shared Components
-export { DarkTooltip, LightTooltip, getTooltipComponent } from './shared/ChartTooltip';
-export { ChartLegend, createLegendRenderer } from './shared/ChartLegend';
 export { ChartDataLabel, createDataLabelRenderer } from './shared/ChartDataLabel';
 
 // Utilities

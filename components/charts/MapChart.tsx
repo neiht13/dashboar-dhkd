@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { useTheme } from "next-themes";
 
 // Use require or import to load JSON.
 import geoDataTTVT from '@/lib/TTVT_polygon.json';
@@ -248,8 +249,8 @@ const MapMarkers = ({ data, config }: { data: any[], config: ChartConfig }) => {
                             </div>
                         </MarkerContent>
                         <MarkerPopup className="p-0 w-64">
-                            <div className="relative h-24 bg-slate-100 rounded-t-md overflow-hidden flex items-center justify-center">
-                                <Building className="size-10 text-slate-300" />
+                            <div className="relative h-24 bg-slate-100 dark:bg-slate-800 rounded-t-md overflow-hidden flex items-center justify-center">
+                                <Building className="size-10 text-slate-300 dark:text-slate-600" />
                             </div>
                             <div className="space-y-2 p-3">
                                 <div>
@@ -302,6 +303,8 @@ const MapLayers = ({ data, config, setLegendItems, regionType, highlightCode, on
     const { map, isLoaded } = useMap();
     const { dataSource } = config;
     const [selectedCode, setSelectedCode] = useState<string | null>(null);
+    const { theme } = useTheme();
+    const isDark = theme === 'dark';
 
     // Sync internal state with external prop
     useEffect(() => {
@@ -570,9 +573,13 @@ const MapLayers = ({ data, config, setLegendItems, regionType, highlightCode, on
                     }
 
                     if (name) {
+                        const bg = isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)';
+                        const border = isDark ? '#334155' : '#e2e8f0';
+                        const color = isDark ? '#f1f5f9' : '#0f172a';
+
                         popup.setLngLat(e.lngLat)
-                            .setHTML(`<div style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(8px); border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; color: #0f172a; min-width: 180px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);">
-                                 <div style="font-weight: bold; font-size: 13px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 4px;">${name}</div>
+                            .setHTML(`<div style="background: ${bg}; backdrop-filter: blur(8px); border: 1px solid ${border}; border-radius: 6px; padding: 10px; color: ${color}; min-width: 180px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);">
+                                 <div style="font-weight: bold; font-size: 13px; border-bottom: 1px solid ${border}; padding-bottom: 4px; margin-bottom: 4px;">${name}</div>
                                  ${valueDisplay}
                              </div>`)
                             .addTo(map);
@@ -691,7 +698,7 @@ const MapLayers = ({ data, config, setLegendItems, regionType, highlightCode, on
         // Update legend
         setLegendItems(legendItems);
 
-    }, [map, isLoaded, dataSource, data, config.style?.mapColorScheme, config.style?.mapDisplayMode, setLegendItems, geoConfig, regionType]);
+    }, [map, isLoaded, dataSource, data, config.style?.mapColorScheme, config.style?.mapDisplayMode, setLegendItems, geoConfig, regionType, isDark]);
 
     // 1. HIGHLIGHT LAYER RENDER EFFECT
     // Updates the highlight layer visualization when selectedCode changes

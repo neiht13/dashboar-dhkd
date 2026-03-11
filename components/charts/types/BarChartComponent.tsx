@@ -7,21 +7,25 @@ import {
     XAxis,
     YAxis,
     CartesianGrid,
-    Tooltip,
-    Legend,
-    ResponsiveContainer,
     Label,
     LabelList,
+    Brush,
 } from 'recharts';
 import type { CartesianChartProps } from '@/types/chart';
-import { getTooltipComponent } from '../shared/ChartTooltip';
-import { createLegendRenderer } from '../shared/ChartLegend';
+import {
+    ChartContainer,
+    ChartTooltip,
+    ChartTooltipContent,
+    ChartLegend,
+    ChartLegendContent,
+} from '@/components/ui/chart';
 import { createDataLabelRenderer } from '../shared/ChartDataLabel';
-import { 
-    getFieldColor, 
-    formatDataLabel, 
+import {
+    getFieldColor,
+    formatDataLabel,
+    formatXAxisTick,
     defaultAnimationConfig,
-    buildLegendColorMap 
+    buildShadcnChartConfig,
 } from '../utils/chart-utils';
 
 interface BarChartComponentProps extends CartesianChartProps {
@@ -34,6 +38,7 @@ export function BarChartComponent({
     config,
     width = "100%",
     height = "100%",
+    onChartClick,
     xAxisKey,
     yAxisKeys,
     styleProps,
@@ -43,11 +48,14 @@ export function BarChartComponent({
     horizontal = false,
 }: BarChartComponentProps) {
     const colors = styleProps.colors;
-    const TooltipComponent = getTooltipComponent(styleProps.tooltipTheme);
-    const renderLegend = createLegendRenderer(
-        buildLegendColorMap(yAxisKeys, yAxisFieldColors, colors),
-        yAxisFieldLabels
+    const chartStyle = config.style;
+    const zoomSlider = chartStyle?.zoomSlider ?? false;
+
+    const chartConfig = React.useMemo(
+        () => buildShadcnChartConfig(yAxisKeys, yAxisFieldLabels, yAxisFieldColors, colors),
+        [yAxisKeys, yAxisFieldLabels, yAxisFieldColors, colors]
     );
+
     const renderDataLabel = createDataLabelRenderer({
         format: styleProps.dataLabelFormat,
         color: styleProps.dataLabelColor,
@@ -55,110 +63,147 @@ export function BarChartComponent({
         position: styleProps.dataLabelPosition,
     });
 
-    // Generate gradients
-    const gradients = yAxisKeys.map((field, index) => (
-        <linearGradient 
-            key={field} 
-            id={`bar-gradient-${index}`} 
-            x1="0" 
-            y1="0" 
-            x2={horizontal ? "1" : "0"} 
-            y2={horizontal ? "0" : "1"}
-        >
-            <stop 
-                offset="0%" 
-                stopColor={getFieldColor(field, index, yAxisFieldColors, colors)} 
-                stopOpacity={horizontal ? 0.7 : 1} 
-            />
-            <stop 
-                offset="100%" 
-                stopColor={getFieldColor(field, index, yAxisFieldColors, colors)} 
-                stopOpacity={horizontal ? 1 : 0.7} 
-            />
-        </linearGradient>
-    ));
+    const handleChartClick = React.useCallback((event: unknown) => {
+        if (!onChartClick) return;
+        const payload = (event as { activePayload?: Array<{ payload?: Record<string, unknown> }> })?.activePayload?.[0]?.payload;
+        if (payload) {
+            onChartClick(payload);
+        }
+    }, [onChartClick]);
 
     return (
-        <ResponsiveContainer width={width} height={height}>
-            <BarChart 
-                data={data} 
+        <ChartContainer config={chartConfig} className="h-full w-full">
+            <BarChart
+                accessibilityLayer
+                data={data}
                 layout={horizontal ? "vertical" : "horizontal"}
-                margin={{ top: 20, right: 20, bottom: 10, left: 10 }}
+                margin={{ top: 8, right: 12, bottom: zoomSlider ? 32 : 20, left: 8 }}
+                onClick={handleChartClick}
+                style={onChartClick ? { cursor: "pointer" } : undefined}
+                barCategoryGap="20%"
+                barGap={2}
             >
-                <defs>{gradients}</defs>
-                
+                <defs>
+                    {yAxisKeys.map((field, index) => {
+                        const color = getFieldColor(field, index, yAxisFieldColors, colors);
+                        return (
+                            <linearGradient
+                                key={field}
+                                id={`bar-gradient-${index}`}
+                                x1="0"
+                                y1="0"
+                                x2={horizontal ? "1" : "0"}
+                                y2={horizontal ? "0" : "1"}
+                            >
+                                <stop offset="0%" stopColor={color} stopOpacity={1} />
+                                <stop offset="100%" stopColor={color} stopOpacity={0.1} />
+                            </linearGradient>
+                        );
+                    })}
+                </defs>
+
                 {styleProps.showGrid && (
-                    <CartesianGrid 
-                        strokeDasharray={stacked ? "0" : "3 3"} 
-                        stroke="#E2E8F0" 
-                        vertical={horizontal} 
+                    <CartesianGrid
+                        strokeDasharray={stacked ? "0" : "3 3"}
+                        vertical={horizontal}
                         horizontal={!horizontal}
                     />
                 )}
-                
+
                 {horizontal ? (
                     <>
                         <XAxis
                             type="number"
                             tickFormatter={(v) => formatDataLabel(v, styleProps.dataLabelFormat)}
-                            tick={{ fontSize: 11, fill: "#64748B", fontWeight: 500 }}
-                            axisLine={{ stroke: "#E2E8F0" }}
                             tickLine={false}
-                        />
+                            axisLine={false}
+                            tickMargin={8}
+                        >
+                            {styleProps.xAxisLabel && (
+                                <Label
+                                    value={styleProps.xAxisLabel}
+                                    offset={-5}
+                                    position="insideBottom"
+                                    fill="hsl(var(--muted-foreground))"
+                                    fontSize={12}
+                                    fontWeight={600}
+                                />
+                            )}
+                        </XAxis>
                         <YAxis
                             dataKey={xAxisKey}
                             type="category"
-                            tick={{ fontSize: 11, fill: "#64748B", fontWeight: 500 }}
-                            axisLine={false}
                             tickLine={false}
+                            axisLine={false}
+                            tickMargin={8}
                             width={80}
-                        />
+                        >
+                            {styleProps.yAxisLabel && (
+                                <Label
+                                    value={styleProps.yAxisLabel}
+                                    angle={-90}
+                                    position="insideLeft"
+                                    style={{ textAnchor: "middle" }}
+                                />
+                            )}
+                        </YAxis>
                     </>
                 ) : (
                     <>
                         <XAxis
                             dataKey={xAxisKey}
-                            tick={{ fontSize: 11, fill: "#64748B", fontWeight: 500 }}
-                            axisLine={{ stroke: "#E2E8F0" }}
+                            tickFormatter={(v) => formatXAxisTick(v, styleProps.xAxisTickFormat)}
                             tickLine={false}
-                            height={styleProps.xAxisLabel ? 40 : 30}
+                            axisLine={false}
+                            tickMargin={10}
+                            minTickGap={10}
+                            height={styleProps.xAxisLabel ? 50 : (styleProps.xAxisTickAngle ? 60 : 30)}
                         >
                             {styleProps.xAxisLabel && (
-                                <Label value={styleProps.xAxisLabel} offset={-5} position="insideBottom" fill="#64748B" fontSize={12} />
+                                <Label value={styleProps.xAxisLabel} offset={-5} position="insideBottom" fontSize={12} fontWeight={600} />
                             )}
                         </XAxis>
                         <YAxis
                             tickFormatter={(v) => formatDataLabel(v, styleProps.dataLabelFormat)}
-                            tick={{ fontSize: 11, fill: "#64748B", fontWeight: 500 }}
-                            axisLine={false}
                             tickLine={false}
+                            axisLine={false}
+                            tickMargin={8}
                             width={80}
                         >
                             {styleProps.yAxisLabel && (
-                                <Label 
-                                    value={styleProps.yAxisLabel} 
-                                    angle={-90} 
-                                    position="insideLeft" 
-                                    style={{ textAnchor: 'middle', fill: '#64748B', fontSize: 12 }} 
+                                <Label
+                                    value={styleProps.yAxisLabel}
+                                    angle={-90}
+                                    position="insideLeft"
+                                    style={{ textAnchor: 'middle' }}
                                 />
                             )}
                         </YAxis>
                     </>
                 )}
-                
+
                 {styleProps.showTooltip && (
-                    <Tooltip 
-                        content={<TooltipComponent />} 
-                        cursor={{ fill: 'rgba(0, 102, 255, 0.05)' }} 
+                    <ChartTooltip
+                        cursor={{ fill: 'rgba(0, 102, 255, 0.05)' }}
+                        content={<ChartTooltipContent />}
                     />
                 )}
                 {styleProps.showLegend && (
-                    <Legend 
-                        content={renderLegend} 
-                        verticalAlign={styleProps.legendPosition as 'top' | 'bottom'} 
+                    <ChartLegend content={<ChartLegendContent />} />
+                )}
+
+                {/* Zoom slider */}
+                {zoomSlider && !horizontal && data.length > 5 && (
+                    <Brush
+                        dataKey={xAxisKey}
+                        height={24}
+                        stroke="#94A3B8"
+                        fill="#F1F5F9"
+                        travellerWidth={8}
+                        tickFormatter={() => ''}
                     />
                 )}
-                
+
                 {yAxisKeys.map((field, index) => (
                     <Bar
                         key={field}
@@ -166,18 +211,20 @@ export function BarChartComponent({
                         name={field}
                         stackId={stacked ? "stack" : undefined}
                         fill={`url(#bar-gradient-${index})`}
-                        radius={horizontal ? [0, 2, 2, 0] : [4, 4, 0, 0]}
+                        radius={horizontal ? [0, 4, 4, 0] : [6, 6, 0, 0]}
+                        maxBarSize={60}
                         {...defaultAnimationConfig}
+                        animationDuration={1400}
                     >
                         {styleProps.showDataLabels && (
                             stacked ? (
-                                <LabelList 
-                                    dataKey={field} 
-                                    position="center" 
-                                    fill="#fff" 
-                                    fontSize={10} 
-                                    fontWeight={600} 
-                                    formatter={(v: number) => formatDataLabel(v, styleProps.dataLabelFormat)} 
+                                <LabelList
+                                    dataKey={field}
+                                    position="center"
+                                    fill="#fff"
+                                    fontSize={10}
+                                    fontWeight={600}
+                                    formatter={(v: number) => formatDataLabel(v, styleProps.dataLabelFormat)}
                                 />
                             ) : (
                                 <LabelList
@@ -185,7 +232,7 @@ export function BarChartComponent({
                                     position={horizontal ? "right" : styleProps.dataLabelPosition}
                                     content={horizontal ? undefined : renderDataLabel}
                                     fontSize={horizontal ? 10 : undefined}
-                                    fill={horizontal ? "#64748B" : undefined}
+                                    fill={horizontal ? "hsl(var(--muted-foreground))" : undefined}
                                     formatter={horizontal ? (v: number) => formatDataLabel(v, styleProps.dataLabelFormat) : undefined}
                                 />
                             )
@@ -193,6 +240,6 @@ export function BarChartComponent({
                     </Bar>
                 ))}
             </BarChart>
-        </ResponsiveContainer>
+        </ChartContainer>
     );
 }
